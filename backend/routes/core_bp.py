@@ -56,7 +56,6 @@ def simulator():
 
 @bp.route("/")
 def index():
-    from backend.config import SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY
     dates      = available_dates()
     today      = ist_today()
     import datetime as dt
@@ -68,8 +67,6 @@ def index():
         max_date=max_date,
         default_from=today.replace(day=1).isoformat(),
         default_to=today.isoformat(),
-        supabase_url=SUPABASE_URL,
-        supabase_key=SUPABASE_PUBLISHABLE_KEY,
     )
 
 

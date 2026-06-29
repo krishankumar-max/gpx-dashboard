@@ -100,20 +100,13 @@ function qs(extra={}) {
   return p.toString();
 }
 
-// ── Supabase Auth ─────────────────────────────────────────────────────────────
-// Config injected by Flask into <body> data-supabase-url / data-supabase-key.
-// Authentication is mandatory. The dashboard never loads without a valid session.
+// ── Session auth ──────────────────────────────────────────────────────────────
+// Backend uses Flask secure-cookie sessions (POST /login, POST /logout, GET /me).
+// The session cookie is sent automatically by the browser — no token management
+// in JavaScript.  Authentication is mandatory: dashboard never loads without a
+// confirmed session.
 
-const _supabaseUrl = document.body.dataset.supabaseUrl || '';
-const _supabaseKey = document.body.dataset.supabaseKey || '';
-const _sbClient    = (_supabaseUrl && _supabaseKey && window.supabase)
-  ? window.supabase.createClient(_supabaseUrl, _supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true },
-    })
-  : null;
-
-let _authSession = null;   // current Supabase session (access_token + user)
-let _dashReady   = false;  // prevent double-boot of init()
+let _dashReady = false;   // prevent double-boot of init()
 
 function _showLoginOverlay() {
   const ov = document.getElementById('auth-overlay');
@@ -125,72 +118,31 @@ function _hideLoginOverlay() {
   if (ov) ov.style.display = 'none';
 }
 
-function _setAuthUserLabel(user) {
+function _setAuthUserLabel(email) {
   const el  = document.getElementById('auth-user-email');
   const row = document.getElementById('auth-user-row');
-  if (el)  el.textContent = user?.email || '';
-  if (row) row.style.display = user ? 'flex' : 'none';
+  if (el)  el.textContent = email || '';
+  if (row) row.style.display = email ? 'flex' : 'none';
 }
 
 async function _initAuth() {
-  if (!_sbClient) {
-    // Supabase client could not be created (missing config or CDN load failure).
-    // Authentication is mandatory — keep the overlay visible and show an error.
-    _showLoginOverlay();
-    const errEl = document.getElementById('auth-error');
-    if (errEl) {
-      errEl.className = 'auth-msg auth-error';
-      errEl.textContent = 'Authentication service unavailable. Check SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.';
-      errEl.style.display = 'block';
+  // Check whether an active session cookie already exists.
+  try {
+    const r = await fetch('/me');
+    if (r.ok) {
+      const data = await r.json();
+      if (data.authenticated) {
+        _setAuthUserLabel(data.email);
+        _hideLoginOverlay();
+        if (!_dashReady) { _dashReady = true; await init(); }
+        return;
+      }
     }
-    return;
-  }
-
-  // Try to restore a persisted session from localStorage.
-  const { data: { session } } = await _sbClient.auth.getSession();
-  if (session) {
-    _authSession = session;
-    _setAuthUserLabel(session.user);
-    _hideLoginOverlay();
-    if (!_dashReady) { _dashReady = true; await init(); }
-  } else {
-    _showLoginOverlay();
-  }
-
-  // Keep session in sync: SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED …
-  _sbClient.auth.onAuthStateChange(async (event, session) => {
-    _authSession = session;
-    if (session) {
-      _setAuthUserLabel(session.user);
-      _hideLoginOverlay();
-      if (!_dashReady) { _dashReady = true; await init(); }
-    } else {
-      _dashReady = false;
-      _setAuthUserLabel(null);
-      _showLoginOverlay();
-    }
-  });
-}
-
-async function authLoginWithGoogle() {
-  if (!_sbClient) return;
-  const errEl = document.getElementById('auth-error');
-  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
-
-  const { error } = await _sbClient.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin + '/' },
-  });
-
-  // Only reaches here on immediate error (e.g. OAuth not configured).
-  // On success the browser redirects to Google; onAuthStateChange handles the return.
-  if (error) {
-    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message || 'Google sign-in failed.'; errEl.style.display = 'block'; }
-  }
+  } catch (_) { /* network error — fall through to show login */ }
+  _showLoginOverlay();
 }
 
 async function authLogin() {
-  if (!_sbClient) return;
   const email    = (document.getElementById('auth-email')?.value || '').trim();
   const password = document.getElementById('auth-password')?.value || '';
   const errEl    = document.getElementById('auth-error');
@@ -203,54 +155,42 @@ async function authLogin() {
   if (btn)   { btn.disabled = true; btn.textContent = 'Signing in…'; }
   if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
 
-  const { error } = await _sbClient.auth.signInWithPassword({ email, password });
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
-  if (error) {
-    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message || 'Login failed. Check your credentials.'; errEl.style.display = 'block'; }
-  }
-  // On success: onAuthStateChange fires automatically and boots the dashboard.
-}
-
-async function authResetPassword() {
-  if (!_sbClient) return;
-  const email = (document.getElementById('auth-email')?.value || '').trim();
-  const errEl = document.getElementById('auth-error');
-  if (!email) {
-    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = 'Enter your email address first.'; errEl.style.display = 'block'; }
-    return;
-  }
-  const { error } = await _sbClient.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + '/',
-  });
-  if (errEl) {
-    if (error) {
-      errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message; errEl.style.display = 'block';
+  try {
+    const r = await fetch('/login', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email, password }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      _setAuthUserLabel(data.email);
+      _hideLoginOverlay();
+      if (!_dashReady) { _dashReady = true; await init(); }
     } else {
-      errEl.className = 'auth-msg auth-success'; errEl.textContent = 'Password reset email sent — check your inbox.'; errEl.style.display = 'block';
+      if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = data.error || 'Login failed.'; errEl.style.display = 'block'; }
     }
+  } catch (_) {
+    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = 'Network error. Please try again.'; errEl.style.display = 'block'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
   }
 }
 
 async function authLogout() {
-  if (_sbClient) await _sbClient.auth.signOut();
-  _authSession = null;
-  _dashReady   = false;
+  await fetch('/logout', { method: 'POST' });
+  _dashReady = false;
   _setAuthUserLabel(null);
   _showLoginOverlay();
 }
 
 // ── Auth-aware fetch ──────────────────────────────────────────────────────────
+// Session cookie is sent automatically — no Authorization header needed.
 
 async function authFetch(url, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (_authSession?.access_token) {
-    headers['Authorization'] = `Bearer ${_authSession.access_token}`;
-  }
-  const r = await fetch(url, { ...options, headers });
+  const r = await fetch(url, options);
   if (r.status === 401) {
-    // Token expired or revoked — force re-login.
-    _authSession = null;
+    _dashReady = false;
+    _setAuthUserLabel(null);
     _showLoginOverlay();
     throw new Error('Session expired. Please log in again.');
   }

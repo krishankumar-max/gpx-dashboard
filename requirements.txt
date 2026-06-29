@@ -40,5 +40,5 @@ pydantic-settings==2.3.4
 # Retry logic (S3 network errors)
 tenacity==8.5.0
 
-# JWT verification (local, using Supabase's JWKS endpoint — no per-request HTTP call)
-PyJWT[crypto]>=2.8.0
+# Password hashing
+bcrypt>=4.0.0

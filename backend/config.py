@@ -115,20 +115,15 @@ REDIS_URL: str     = os.getenv("REDIS_URL", "")
 SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-change-in-production")
 LOG_LEVEL: str  = os.getenv("LOG_LEVEL", "INFO")
 
-# ── Supabase Auth ─────────────────────────────────────────────────────────────
-# SUPABASE_URL:             project URL — used to build the JWKS endpoint for
-#                           local JWT verification. Safe to commit; not a secret.
-# SUPABASE_PUBLISHABLE_KEY: anon/public key sent to the browser for the JS client.
-# SUPABASE_SECRET_KEY:      service_role key — reserved for future Supabase admin
-#                           operations (not used for JWT verification).
-#                           Never expose to the frontend or commit to git.
+# ── Local Auth ────────────────────────────────────────────────────────────────
+# Single administrator account.  Credentials are stored in the environment so
+# they are never committed to source control.
 #
-# JWT verification path: {SUPABASE_URL}/auth/v1/.well-known/jwks.json
-# Keys are cached in-process by PyJWT — no outbound HTTP per request.
-# When SUPABASE_URL is empty all auth checks are bypassed (dev mode).
-SUPABASE_URL:             str = os.getenv("SUPABASE_URL",             "")
-SUPABASE_PUBLISHABLE_KEY: str = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
-SUPABASE_SECRET_KEY:      str = os.getenv("SUPABASE_SECRET_KEY",      "")
+# LOGIN_EMAIL         — administrator email address
+# LOGIN_PASSWORD_HASH — bcrypt hash of the password
+#                       Generate: python3 -c "import bcrypt; print(bcrypt.hashpw(b'<pw>', bcrypt.gensalt(12)).decode())"
+LOGIN_EMAIL:         str = os.getenv("LOGIN_EMAIL",         "")
+LOGIN_PASSWORD_HASH: str = os.getenv("LOGIN_PASSWORD_HASH", "")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 # Comma-separated list of allowed origins for the API.
