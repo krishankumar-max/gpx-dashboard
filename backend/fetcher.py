@@ -22,6 +22,7 @@ Usage
 """
 
 import datetime as dt
+import json
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -119,29 +120,42 @@ def _build_params(
     """
     Build GET query parameters for one page.
 
-    If *partner_ids* is supplied, the `partner` key is added as a list so that
-    requests sends repeated params: ``partner=1081&partner=2050&partner=3001``.
+    Matches the Sapphyre frontend request format exactly (confirmed via
+    Chrome DevTools):
 
-    IMPORTANT — UNVERIFIED ASSUMPTION:
-    The parameter name ``partner`` and the repeated-param format are assumed.
-    If the API ignores the filter (i.e. probe returns the global total regardless
-    of partner_ids), try alternative names: ``partnerId``, ``publisher``,
-    ``publisherId``, ``partner_id``.  The correct name can be confirmed from the
-    wire URL logged at DEBUG level on every request.
+        GET /api/stats/postbacks
+            ?skip=0
+            &limit=500
+            &sortOrder=desc
+            &filters={"offer":[],"partner":[1115],"advertiser":[],"clickId":[],"impressionId":[]}
+            &fromDate=2026-06-28T00:00:00+05:30
+            &toDate=2026-06-29T00:00:00+05:30
+            &timezone=Asia/Kolkata
+
+    The ``filters`` value is a compact JSON string (no spaces).
+    ``partner`` inside filters is a list of integer IDs; empty list means
+    no filter (all partners).
     """
     tz_suffix = "+05:30"
-    params: dict[str, Any] = {
-        "fromDate": f"{date.isoformat()}T00:00:00{tz_suffix}",
-        "toDate":   f"{(date + dt.timedelta(days=1)).isoformat()}T00:00:00{tz_suffix}",
-        "timezone": SAPPHYRE_TIMEZONE,
-        "skip":     skip,
-        "limit":    limit,
+    filters = {
+        "offer":        [],
+        "partner":      list(partner_ids) if partner_ids else [],
+        "advertiser":   [],
+        "clickId":      [],
+        "impressionId": [],
     }
-    if partner_ids:
-        params["partner"] = partner_ids   # requests serialises as repeated params
+    params: dict[str, Any] = {
+        "skip":      skip,
+        "limit":     limit,
+        "sortOrder": "desc",
+        "filters":   json.dumps(filters, separators=(",", ":")),
+        "fromDate":  f"{date.isoformat()}T00:00:00{tz_suffix}",
+        "toDate":    f"{(date + dt.timedelta(days=1)).isoformat()}T00:00:00{tz_suffix}",
+        "timezone":  SAPPHYRE_TIMEZONE,
+    }
     logger.debug(
         f"[{date}] _build_params → skip={skip} limit={limit} "
-        f"partner_ids={partner_ids!r}  raw_params={params!r}"
+        f"partner_ids={partner_ids!r}  filters={filters!r}"
     )
     return params
 
