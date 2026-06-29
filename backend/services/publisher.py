@@ -64,6 +64,7 @@ class PublisherService:
             "id":              str(uuid.uuid4()),
             "publisher_id":    str(body.get("publisher_id", "")).strip(),
             "partner_name":    str(body.get("partner_name", "")).strip(),
+            "enabled":         bool(body.get("enabled", True)),
             "game_name":       str(body.get("game_name",   "")).strip(),
             "game_id":         str(body.get("game_id",     "")).strip(),
             "game_type":       str(body.get("game_type",   "")).strip(),
@@ -83,6 +84,7 @@ class PublisherService:
                 rec.update({
                     "publisher_id":   str(body.get("publisher_id",   rec["publisher_id"])).strip(),
                     "partner_name":   str(body.get("partner_name",   rec.get("partner_name",""))).strip(),
+                    "enabled":        bool(body.get("enabled",        rec.get("enabled", True))),
                     "game_name":      str(body.get("game_name",       rec.get("game_name",""))).strip(),
                     "game_id":        str(body.get("game_id",         rec.get("game_id",""))).strip(),
                     "game_type":      str(body.get("game_type",       rec.get("game_type",""))).strip(),

@@ -3923,6 +3923,8 @@ function _pubFormClear() {
     const el = document.getElementById('pub-f-' + k);
     if (el) el.value = '';
   });
+  const en = document.getElementById('pub-f-enabled');
+  if (en) en.checked = true;
 }
 
 async function loadPubList() {
@@ -3932,16 +3934,25 @@ async function loadPubList() {
     if (badge) badge.textContent = pubs.length + ' publishers';
     api('/api/publishers/map').then(m => { window._partnerMap = m || {}; }).catch(()=>{});
 
-    document.getElementById('pub-list-body').innerHTML = pubs.length ? pubs.map(p => `
-      <tr>
+    document.getElementById('pub-list-body').innerHTML = pubs.length ? pubs.map(p => {
+      const enabled = p.enabled !== false;
+      const statusBadge = enabled
+        ? `<span class="pub-status-badge pub-status-active">Active</span>`
+        : `<span class="pub-status-badge pub-status-paused">Paused</span>`;
+      const toggleLabel = enabled ? 'Pause' : 'Activate';
+      return `
+      <tr class="${enabled ? '' : 'pub-row-paused'}">
         <td style="font-weight:600;font-size:13px">${esc(p.publisher_id)}</td>
         <td style="font-weight:500">${esc(p.partner_name || '—')}</td>
+        <td class="td-center">${statusBadge}</td>
         <td class="td-center" style="white-space:nowrap">
-          <button class="tbl-btn tbl-btn-edit" onclick="editPub('${p.id}')">Edit</button>
-          <button class="tbl-btn tbl-btn-del"  onclick="deletePub('${p.id}')">Del</button>
+          <button class="tbl-btn tbl-btn-edit"   onclick="editPub('${p.id}')">Edit</button>
+          <button class="tbl-btn tbl-btn-toggle" onclick="togglePubEnabled('${p.id}', ${enabled})">${toggleLabel}</button>
+          <button class="tbl-btn tbl-btn-del"    onclick="deletePub('${p.id}')">Del</button>
         </td>
-      </tr>`).join('')
-      : `<tr><td colspan="3" class="td-empty"><div class="empty-state"><i class="fas fa-handshake empty-icon"></i><p>No publishers yet — add one above</p></div></td></tr>`;
+      </tr>`;
+    }).join('')
+      : `<tr><td colspan="4" class="td-empty"><div class="empty-state"><i class="fas fa-handshake empty-icon"></i><p>No publishers yet — add one above</p></div></td></tr>`;
     _loaded.delete('administration:sync');
   } catch(e) { console.error('pub list:', e); }
 }
@@ -3950,10 +3961,11 @@ async function savePub() {
   const editId       = document.getElementById('pub-edit-id')?.value;
   const publisher_id = document.getElementById('pub-f-publisher_id')?.value.trim();
   const partner_name = document.getElementById('pub-f-partner_name')?.value.trim();
+  const enabled      = document.getElementById('pub-f-enabled')?.checked ?? true;
   if (!publisher_id) { alert('Publisher ID is required'); return; }
   if (!partner_name) { alert('Partner Name is required'); return; }
 
-  const payload = { publisher_id, partner_name };
+  const payload = { publisher_id, partner_name, enabled };
   const url     = editId ? `/api/management/publishers/${editId}` : '/api/management/publishers';
   const method  = editId ? 'PUT' : 'POST';
   const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
@@ -3971,11 +3983,26 @@ async function editPub(id) {
   document.getElementById('pub-edit-id').value            = id;
   document.getElementById('pub-f-publisher_id').value     = p.publisher_id || '';
   document.getElementById('pub-f-partner_name').value     = p.partner_name || '';
+  const en = document.getElementById('pub-f-enabled');
+  if (en) en.checked = p.enabled !== false;
 
   document.getElementById('pub-form-title').innerHTML     = '<i class="fas fa-edit" style="color:var(--primary)"></i> Edit Publisher';
   document.getElementById('pub-save-label').textContent   = 'Save Changes';
   document.getElementById('pub-cancel-btn').style.display = 'inline-flex';
   document.getElementById('pub-form-card').scrollIntoView({ behavior:'smooth' });
+}
+
+// Quick toggle without opening the edit form.
+// Sends a partial PUT — all other fields default to their stored values in the service.
+async function togglePubEnabled(id, currentEnabled) {
+  const r = await fetch(`/api/management/publishers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !currentEnabled }),
+  });
+  if (!r.ok) { const d = await r.json(); alert(d.error || 'Toggle failed'); return; }
+  _loaded.delete('administration:publishers');
+  await loadPubList();
 }
 
 async function deletePub(id) {

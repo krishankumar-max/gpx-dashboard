@@ -1589,6 +1589,13 @@
               <input type="text" id="pub-f-partner_name" placeholder="e.g. Elite Media">
             </div>
           </div>
+          <div class="pub-enabled-row">
+            <label class="pub-toggle-label">
+              <input type="checkbox" id="pub-f-enabled" checked>
+              <span class="pub-toggle-text">Active — include in sync</span>
+            </label>
+            <span class="pub-enabled-hint">Uncheck to pause this partner without deleting their data.</span>
+          </div>
           <div class="mgmt-actions">
             <button class="btn-primary" onclick="savePub()">
               <i class="fas fa-save"></i> <span id="pub-save-label">Add Publisher</span>
@@ -1611,7 +1618,8 @@
                 <tr>
                   <th style="width:120px">Publisher ID</th>
                   <th>Partner Name</th>
-                  <th class="th-center" style="width:120px">Actions</th>
+                  <th class="th-center" style="width:90px">Status</th>
+                  <th class="th-center" style="width:140px">Actions</th>
                 </tr>
               </thead>
               <tbody id="pub-list-body"></tbody>
