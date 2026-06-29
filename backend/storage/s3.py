@@ -285,6 +285,17 @@ class S3Storage(StorageProvider):
         return df
 
     def save_summary(self, df: pd.DataFrame) -> None:
+        df = df.copy()
+        # Normalise the date column to str ("YYYY-MM-DD") before Arrow serialisation.
+        # load_summary() converts the stored string back to datetime.date for comparisons.
+        # Without this, a concat of datetime.date rows (from load_summary) with str rows
+        # (from _summarise_day) produces a mixed-type object column that PyArrow cannot
+        # map to a single Arrow type, raising:
+        #   "object of type <class 'str'> cannot be converted to int"
+        #   "Conversion failed for column date with type object"
+        df["date"] = df["date"].apply(
+            lambda d: d.isoformat() if isinstance(d, dt.date) else str(d)
+        )
         df    = df.sort_values(AGG_GROUP_COLS).reset_index(drop=True)
         table = pa.Table.from_pandas(df, preserve_index=False)
         uri   = self._summary_uri()

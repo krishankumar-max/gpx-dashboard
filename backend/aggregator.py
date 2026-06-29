@@ -132,6 +132,13 @@ def upsert_day(date: dt.date) -> None:
       2. Drop all rows for *date*.
       3. Compute fresh summary rows for *date* from raw data.
       4. Concatenate and save.
+
+    Type contract:
+      load_summary() returns date as datetime.date (for range comparisons).
+      _summarise_day() returns date as str (date.isoformat()).
+      save_summary() normalises date → str before writing to Parquet so the
+      stored type is always consistent regardless of the caller's type.
+      The filter here compares datetime.date == datetime.date (not str).
     """
     storage  = get_provider()
     df_raw   = storage.load_raw_day(date)
@@ -139,10 +146,23 @@ def upsert_day(date: dt.date) -> None:
 
     if storage.summary_exists():
         existing = storage.load_summary()
-        existing = existing[existing["date"] != date.isoformat()]
+        # existing["date"] is datetime.date (load_summary converts from parquet string).
+        # Compare datetime.date to datetime.date — NOT to date.isoformat() (str),
+        # which would always evaluate to True and never remove the current day's rows.
+        existing = existing[existing["date"] != date]
         combined = pd.concat([existing, new_rows], ignore_index=True)
     else:
         combined = new_rows
+
+    # Diagnostic: log schema and a sample date value so type mismatches are
+    # visible in the log before PyArrow sees them.
+    logger.debug(f"[{date}] save_summary dtypes:\n{combined.dtypes.to_string()}")
+    if "date" in combined.columns and len(combined) > 0:
+        _sample = combined["date"].iloc[0]
+        logger.debug(
+            f"[{date}] date column sample: {_sample!r}  "
+            f"python_type={type(_sample).__name__}"
+        )
 
     storage.save_summary(combined)
     logger.success(
