@@ -76,7 +76,7 @@ AGG_VALUE_COLS: list[str] = ["revenue", "payout", "conversions", "valid_conversi
 
 # ── HTTP client settings ──────────────────────────────────────────────────────
 HTTP_TIMEOUT_SECONDS: int = 60
-HTTP_MAX_RETRIES: int = 20          # tenacity will retry 429 / network errors
+HTTP_MAX_RETRIES: int = int(os.getenv("HTTP_MAX_RETRIES", "10"))  # per-page retry ceiling
 HTTP_RETRY_WAIT_MIN: float = 1.0
 HTTP_RETRY_WAIT_MAX: float = 30.0
 

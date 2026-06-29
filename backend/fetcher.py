@@ -36,6 +36,7 @@ from backend.config import (
     SYNC_WORKERS,
     SYNC_PAGE_SIZE,
     HTTP_TIMEOUT_SECONDS,
+    HTTP_MAX_RETRIES,
     KEEP_COLS,
 )
 
@@ -46,6 +47,38 @@ _ProgressCB = Callable[[int, int, int], None]
 _BACKOFF_BASE: float = 2.0      # seconds for first retry
 _BACKOFF_STEP: float = 2.0      # added on each subsequent retry
 _BACKOFF_MAX: float = 30.0      # ceiling
+_MAX_RETRIES: int = HTTP_MAX_RETRIES
+
+
+class PageFetchFailed(Exception):
+    """
+    Raised by _fetch_page when a single page exhausts all retry attempts.
+
+    Attributes
+    ----------
+    date        : Calendar date being fetched.
+    skip        : Row offset (page start) of the failed page.
+    attempts    : Number of attempts made.
+    last_exc    : Last network exception, or None if failure was HTTP-status-based.
+    last_status : Last HTTP status code seen, or None if last failure was a network error.
+    """
+    def __init__(
+        self,
+        date: dt.date,
+        skip: int,
+        attempts: int,
+        last_exc: Exception | None = None,
+        last_status: int | None = None,
+    ) -> None:
+        self.date        = date
+        self.skip        = skip
+        self.attempts    = attempts
+        self.last_exc    = last_exc
+        self.last_status = last_status
+        detail = f"status={last_status}" if last_status else f"exc={last_exc}"
+        super().__init__(
+            f"[{date}] skip={skip}: gave up after {attempts} attempts ({detail})"
+        )
 
 
 def _make_session() -> requests.Session:
@@ -96,7 +129,7 @@ def _filter_row(row: dict[str, Any]) -> dict[str, Any]:
     return {k: row.get(k) for k in KEEP_COLS}
 
 
-# ── Single-page fetch with infinite retry ────────────────────────────────────
+# ── Single-page fetch with bounded retry ─────────────────────────────────────
 
 def _fetch_page(
     session: requests.Session,
@@ -107,21 +140,23 @@ def _fetch_page(
     """
     Fetch one page (skip offset) for *date*.
 
-    Retries forever on:
+    Retries up to _MAX_RETRIES times on:
       - HTTP 429 (rate limited)
+      - HTTP 5xx (server errors)
       - requests.Timeout
       - requests.ConnectionError
 
-    Raises immediately on any other HTTP error (4xx except 429, 5xx).
+    Raises immediately on any other HTTP error (4xx except 429).
+    Raises PageFetchFailed after _MAX_RETRIES exhausted.
 
     Returns the filtered rows for this page.
     """
     params = _build_params(date, skip=skip, limit=SYNC_PAGE_SIZE, partner_ids=partner_ids)
     wait = _BACKOFF_BASE
-    attempt = 0
+    last_exc: Exception | None = None
+    last_status: int | None = None
 
-    while True:
-        attempt += 1
+    for attempt in range(1, _MAX_RETRIES + 1):
         try:
             resp = session.get(
                 SAPPHYRE_BASE_URL,
@@ -131,11 +166,12 @@ def _fetch_page(
 
             # ── Rate limit: back off and retry ───────────────────────────────
             if resp.status_code == 429:
+                last_status = 429
                 retry_after = float(resp.headers.get("Retry-After", wait))
                 sleep_for = max(retry_after, wait)
                 logger.warning(
                     f"[{date}] skip={skip} → 429 rate-limit "
-                    f"(attempt {attempt}). Sleeping {sleep_for:.1f}s…"
+                    f"(attempt {attempt}/{_MAX_RETRIES}). Sleeping {sleep_for:.1f}s…"
                 )
                 time.sleep(sleep_for)
                 wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
@@ -143,9 +179,10 @@ def _fetch_page(
 
             # ── Server errors: back off and retry ────────────────────────────
             if resp.status_code >= 500:
+                last_status = resp.status_code
                 logger.warning(
                     f"[{date}] skip={skip} → HTTP {resp.status_code} "
-                    f"(attempt {attempt}). Sleeping {wait:.1f}s…"
+                    f"(attempt {attempt}/{_MAX_RETRIES}). Sleeping {wait:.1f}s…"
                 )
                 time.sleep(wait)
                 wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
@@ -161,9 +198,10 @@ def _fetch_page(
 
             if not isinstance(rows, list):
                 # Unexpected response shape — treat as transient and retry
+                last_status = resp.status_code
                 logger.warning(
                     f"[{date}] skip={skip} → unexpected payload type "
-                    f"{type(rows).__name__} (attempt {attempt}). Retrying…"
+                    f"{type(rows).__name__} (attempt {attempt}/{_MAX_RETRIES}). Retrying…"
                 )
                 time.sleep(wait)
                 wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
@@ -172,12 +210,21 @@ def _fetch_page(
             return [_filter_row(r) for r in rows]
 
         except (requests.Timeout, requests.ConnectionError) as exc:
+            last_exc = exc
             logger.warning(
-                f"[{date}] skip={skip} → network error (attempt {attempt}): "
+                f"[{date}] skip={skip} → network error (attempt {attempt}/{_MAX_RETRIES}): "
                 f"{exc}. Sleeping {wait:.1f}s…"
             )
             time.sleep(wait)
             wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+
+    raise PageFetchFailed(
+        date=date,
+        skip=skip,
+        attempts=_MAX_RETRIES,
+        last_exc=last_exc,
+        last_status=last_status,
+    )
 
 
 # ── Probe total row count ─────────────────────────────────────────────────────
@@ -285,6 +332,7 @@ def fetch_day_sync(
 
     # ── Step 3: fan-out — one future per page ────────────────────────────────
     results: dict[int, list[dict[str, Any]]] = {}
+    failed:  dict[int, PageFetchFailed]       = {}
 
     with ThreadPoolExecutor(max_workers=SYNC_WORKERS) as executor:
         future_to_offset = {
@@ -293,9 +341,15 @@ def fetch_day_sync(
         }
         completed = 0
         for future in as_completed(future_to_offset):
-            offset    = future_to_offset[future]
-            page_rows = future.result()
-            results[offset] = page_rows
+            offset = future_to_offset[future]
+            try:
+                results[offset] = future.result()
+            except PageFetchFailed as exc:
+                logger.error(
+                    f"[{date}] skip={offset} → gave up after {exc.attempts} attempts "
+                    f"(status={exc.last_status}, exc={exc.last_exc}). Will retry sequentially."
+                )
+                failed[offset] = exc
             completed += 1
             rows_so_far = sum(len(v) for v in results.values())
 
@@ -309,6 +363,30 @@ def fetch_day_sync(
                     f"[{date}] {completed}/{len(offsets)} pages  "
                     f"({rows_so_far:,} rows so far)"
                 )
+
+    # ── Step 3b: sequential retry for pages that hit the parallel retry cap ───
+    if failed:
+        logger.warning(
+            f"[{date}] {len(failed)} page(s) failed in parallel — retrying sequentially: "
+            f"offsets={sorted(failed)}"
+        )
+        still_failed: list[int] = []
+        for offset in sorted(failed):
+            try:
+                results[offset] = _fetch_page(session, date, offset, pid_list)
+                logger.info(f"[{date}] skip={offset} → sequential retry succeeded.")
+            except PageFetchFailed as exc:
+                logger.error(
+                    f"[{date}] skip={offset} → sequential retry also failed "
+                    f"after {exc.attempts} attempts."
+                )
+                still_failed.append(offset)
+        if still_failed:
+            raise RuntimeError(
+                f"[{date}] Sync failed: {len(still_failed)} page(s) could not be fetched "
+                f"after parallel + sequential retries. "
+                f"Failed offsets: {still_failed}"
+            )
 
     # ── Step 4: flatten in offset order (deterministic) ───────────────────────
     all_rows: list[dict[str, Any]] = []
