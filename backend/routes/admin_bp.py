@@ -1,7 +1,7 @@
 """
 Admin blueprint — game-config CRUD, /api/admin/games/*, /api/management/clients.
 
-Write/destructive endpoints are protected with @admin_required (X-Admin-Key header).
+Write/destructive endpoints are protected with @admin_required (Supabase JWT, role: admin or super_admin).
 Read-only GET endpoints remain open so the dashboard UI can display data without auth.
 """
 from __future__ import annotations

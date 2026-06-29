@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 from backend.aggregator import load_summary, upsert_day
 from backend.config import (
-    ADMIN_KEY, CACHE_BACKEND, CORS_ORIGINS,
+    CACHE_BACKEND, CORS_ORIGINS,
     REPO_BACKEND, SECRET_KEY, STORAGE_BACKEND, SYNC_DAY_WORKERS,
 )
 from backend.fetcher import fetch_day_sync

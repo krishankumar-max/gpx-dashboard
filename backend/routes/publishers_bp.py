@@ -1,7 +1,7 @@
 """
 Publishers blueprint — /api/publishers/*, /api/management/publishers.
 
-Management write endpoints are protected with @admin_required (X-Admin-Key header).
+Management write endpoints are protected with @admin_required (Supabase JWT, role: admin or super_admin).
 """
 from __future__ import annotations
 

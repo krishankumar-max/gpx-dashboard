@@ -28,14 +28,19 @@ keepalive   = 5
 graceful_timeout = 30
 
 # ── Logging ───────────────────────────────────────────────────────────────────
-accesslog   = "/var/log/sapphyre/gunicorn_access.log"
-errorlog    = "/var/log/sapphyre/gunicorn_error.log"
+# Default to stderr/stdout ("-") so gunicorn starts on any machine.
+# On EC2 set GUNICORN_ACCESS_LOG and GUNICORN_ERROR_LOG in the environment
+# (e.g. via systemd's EnvironmentFile) to redirect to /var/log/sapphyre/.
+accesslog   = os.getenv("GUNICORN_ACCESS_LOG", "-")
+errorlog    = os.getenv("GUNICORN_ERROR_LOG",  "-")
 loglevel    = os.getenv("LOG_LEVEL", "info").lower()
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)sµs'
 
 # ── Process ───────────────────────────────────────────────────────────────────
-pidfile     = "/var/run/sapphyre/gunicorn.pid"
-daemon      = False         # systemd manages the process — never daemonise here
+# Pidfile is optional; omit it when the directory does not exist (dev/CI).
+_pidfile = os.getenv("GUNICORN_PID_FILE", "/var/run/sapphyre/gunicorn.pid")
+pidfile  = _pidfile if os.path.isdir(os.path.dirname(_pidfile)) else None
+daemon   = False            # systemd manages the process — never daemonise here
 
 # ── Security ─────────────────────────────────────────────────────────────────
 limit_request_line    = 4096
