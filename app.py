@@ -416,6 +416,18 @@ def _do_sync(
             "duration_str":     dur_str,
         }
 
+        # ── Auto-seed new offers into Game Configurations ──────────────────────
+        # Every offer discovered during this sync is inserted as a pending game
+        # config stub if it doesn't already exist.  This makes Game Configurations
+        # the single source of truth — admins review/configure pending stubs, and
+        # only configured (non-pending) offers appear on dashboards and reports.
+        try:
+            seeded = _game_config_svc.seed_from_sync(dates)
+            if seeded:
+                _sync_log(f"  Game Configs: {seeded} new offer(s) auto-seeded as pending")
+        except Exception as _seed_err:
+            logger.warning(f"seed_from_sync failed (non-fatal): {_seed_err}")
+
         _sync_log("──────────────────────────────────────────")
         _sync_log(f"✓ Sync complete  ({dur_str})")
         _sync_log(f"  Dates       : {len(dates)}")

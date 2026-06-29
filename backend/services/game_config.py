@@ -93,38 +93,57 @@ class GameConfigService:
         return record
 
     def update(self, cid: str, body: dict) -> dict | None:
-        """Update a game config by id.  Returns updated dict or None if not found."""
-        records = self._repo.get_all_raw()
-        for rec in records:
-            if rec.get("id") == cid:
-                em = body.get("expected_margin")
-                rec.update({
-                    "game_type":       str(body.get("game_type", rec.get("game_type", "CPI"))).strip(),
-                    "payable_goals":   body.get("payable_goals", rec.get("payable_goals", []))
-                                       if isinstance(body.get("payable_goals"), list)
-                                       else rec.get("payable_goals", []),
-                    "publisher_kpi":   _safe_kpi(body.get("publisher_kpi"),  rec.get("publisher_kpi")),
-                    "client_kpi":      _safe_kpi(body.get("client_kpi"),     rec.get("client_kpi")),
-                    "expected_funnel": body.get("expected_funnel", rec.get("expected_funnel", []))
-                                       if isinstance(body.get("expected_funnel"), list)
-                                       else rec.get("expected_funnel", []),
-                    "expected_margin": float(em) if em is not None and em != "" else rec.get("expected_margin"),
-                    "updated_at":      ist_now().isoformat(),
-                })
-                self._repo.save_all_raw(records)
-                self._invalidate()
-                return rec
-        return None
+        """
+        Update a game config by id.  Returns updated dict or None if not found.
+
+        Uses repo.update() (per-record) instead of save_all_raw() (full replace)
+        to avoid the delete-everything-then-reinsert pattern on PostgreSQL.
+
+        Updatable fields include offer_name and campaign_status so Game
+        Configurations is the single place an admin edits all game metadata.
+        When the admin saves a pending record with any real data, they should
+        also set campaign_status to something other than "pending" (e.g. "live")
+        to make it visible on dashboards.
+        """
+        existing = self._repo.get_by_id(cid)
+        if existing is None:
+            return None
+
+        rec = existing.to_dict() if hasattr(existing, "to_dict") else dict(existing)
+        em  = body.get("expected_margin")
+
+        # Build the merged record — body values win; missing keys fall back to rec
+        merged = dict(rec)
+        merged.update({
+            "offer_name":      str(body.get("offer_name", rec.get("offer_name", ""))).strip()
+                               or rec.get("offer_name", ""),
+            "game_type":       str(body.get("game_type", rec.get("game_type", "CPI"))).strip(),
+            "payable_goals":   body.get("payable_goals", rec.get("payable_goals", []))
+                               if isinstance(body.get("payable_goals"), list)
+                               else rec.get("payable_goals", []),
+            "publisher_kpi":   _safe_kpi(body.get("publisher_kpi"),  rec.get("publisher_kpi")),
+            "client_kpi":      _safe_kpi(body.get("client_kpi"),     rec.get("client_kpi")),
+            "expected_funnel": body.get("expected_funnel", rec.get("expected_funnel", []))
+                               if isinstance(body.get("expected_funnel"), list)
+                               else rec.get("expected_funnel", []),
+            "expected_margin": float(em) if em is not None and em != "" else rec.get("expected_margin"),
+            "updated_at":      ist_now().isoformat(),
+        })
+
+        # campaign_status: allow explicit update (drives dashboard visibility)
+        if "campaign_status" in body:
+            merged["campaign_status"] = body["campaign_status"]
+
+        result = self._repo.update(cid, merged)
+        self._invalidate()
+        return result
 
     def delete(self, cid: str) -> bool:
         """Delete by id.  Returns True if found and deleted."""
-        records     = self._repo.get_all_raw()
-        new_records = [r for r in records if r.get("id") != cid]
-        if len(new_records) == len(records):
-            return False
-        self._repo.save_all_raw(new_records)
-        self._invalidate()
-        return True
+        deleted = self._repo.delete(cid)
+        if deleted:
+            self._invalidate()
+        return deleted
 
     # ── Discovery ─────────────────────────────────────────────────────────────
 
@@ -179,6 +198,56 @@ class GameConfigService:
                 pass
         return offers
 
+    def seed_from_sync(self, available_dates: list) -> int:
+        """
+        Auto-insert a pending Game Configuration stub for every offer discovered
+        in raw data that does not yet have a config record.
+
+        Called automatically at the end of each sync run.  This ensures:
+          - Every discovered offer appears in Administration → Game Configurations
+          - New offers are marked campaign_status="pending" (hidden from dashboards)
+          - Existing configs (pending or live) are never overwritten
+          - No duplicates are created
+
+        Returns the number of new stubs created.
+        """
+        import uuid as _uuid
+
+        offers     = self.scan_discovered_offers(available_dates)
+        if not offers:
+            return 0
+
+        existing   = self._repo.get_all_raw()
+        known_oids = {str(c.get("offer_id", "")).strip() for c in existing}
+
+        created = 0
+        for oid, info in sorted(offers.items()):
+            if oid in known_oids:
+                continue  # config already exists — never overwrite
+            stub = {
+                "id":              str(_uuid.uuid4()),
+                "offer_id":        oid,
+                "offer_name":      info["offer_name"],
+                "game_type":       info.get("game_type_guess", "CPI"),
+                "payable_goals":   [],
+                "publisher_kpi":   {"retention": [], "roas": []},
+                "client_kpi":      {"retention": [], "roas": []},
+                "expected_funnel": [],
+                "expected_margin": None,
+                "campaign_status": "pending",   # hidden from dashboards
+                "configured_at":   ist_now().isoformat(),
+            }
+            try:
+                self._repo.create(stub)
+                known_oids.add(oid)   # prevent duplicates within this batch
+                created += 1
+            except Exception:
+                pass  # concurrent write or unique-constraint violation — safe to skip
+
+        if created:
+            self._invalidate()
+        return created
+
     def get_discovered(self, available_dates: list, raw_path_fn=None) -> list:
         """Return list of every offer seen in raw data, annotated with configured status."""
         offers  = self.scan_discovered_offers(available_dates)
@@ -198,19 +267,31 @@ class GameConfigService:
         return result
 
     def get_unconfigured(self, available_dates: list, raw_path_fn=None) -> dict:
-        """Return only offers that exist in raw data but have no game config."""
-        offers  = self.scan_discovered_offers(available_dates)
-        configs = self._repo.get_all_raw()
-        cfg_ids = {str(c.get("offer_id", "")).strip() for c in configs}
+        """
+        Return offers that need admin attention:
+          - Discovered in raw data with no config record at all (edge case after seeding)
+          - Discovered in raw data with a config record in status "pending"
+            (auto-seeded by seed_from_sync but not yet reviewed by admin)
+
+        These are the items the admin sees in the "Unconfigured Games" panel.
+        Setting campaign_status to anything other than "pending" (e.g. "live")
+        removes the offer from this list and makes it visible on dashboards.
+        """
+        offers    = self.scan_discovered_offers(available_dates)
+        configs   = self._repo.get_all_raw()
+        cfg_by_oid = {str(c.get("offer_id", "")).strip(): c for c in configs}
 
         result = []
         for oid, info in sorted(offers.items(), key=lambda x: x[1]["offer_name"].lower()):
-            if oid not in cfg_ids:
+            cfg = cfg_by_oid.get(oid)
+            # Include if no config at all, or config is still pending
+            if cfg is None or cfg.get("campaign_status") == "pending":
                 result.append({
                     "offer_id":        oid,
                     "offer_name":      info["offer_name"],
                     "publisher_ids":   sorted(info["publisher_ids"]),
                     "game_type_guess": info["game_type_guess"],
+                    "config_id":       cfg.get("id") if cfg else None,
                 })
         return {"unconfigured": result, "count": len(result)}
 
@@ -224,7 +305,12 @@ class GameConfigService:
         configs = self._repo.get_all_raw()
         offers  = self.scan_discovered_offers(available_dates)
 
-        configured_ids = {c["offer_id"] for c in configs}
+        # "configured" = has a record AND campaign_status != "pending"
+        configured_ids = {
+            c["offer_id"] for c in configs
+            if c.get("campaign_status") != "pending"
+        }
+        # "pending_count" = discovered offers that are not yet fully configured
         pending_count  = sum(1 for oid in offers if oid not in configured_ids)
 
         def _has_kpi(c):

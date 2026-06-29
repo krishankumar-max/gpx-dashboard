@@ -4031,7 +4031,7 @@ let _gcClientKpi = { retention: [], roas: [] };
 let _gcFunnel    = [];   // [{goal:'', pct:'', time_val:'', time_unit:'Days'}]
 let _gcFilter    = 'all';
 let _gcDiscovered = [];  // cached from /api/admin/games/discovered
-let _gcConfigs    = [];  // cached from /api/admin/games/configs
+let _gcConfigs    = [];  // cached from /api/admin/games
 
 // ── Render helpers ───────────────────────────────────────────────
 
@@ -4361,7 +4361,7 @@ async function loadGamesList() {
   try {
     [_gcDiscovered, _gcConfigs] = await Promise.all([
       api('/api/admin/games/discovered'),
-      api('/api/admin/games/configs'),
+      api('/api/admin/games'),
     ]);
   } catch(e) { console.error('gc load:', e); _gcDiscovered = []; _gcConfigs = []; }
 
@@ -4477,7 +4477,7 @@ async function saveGameConfig() {
     expected_margin: em !== '' && em != null ? parseFloat(em) : null,
   };
 
-  const url    = editId ? `/api/admin/games/configs/${editId}` : '/api/admin/games/configs';
+  const url    = editId ? `/api/admin/games/${editId}` : '/api/admin/games';
   const method = editId ? 'PUT' : 'POST';
   const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
@@ -4540,7 +4540,7 @@ async function editGameConfig(id) {
 
 async function deleteGameConfig(id) {
   if (!confirm('Delete this game configuration?')) return;
-  await fetch(`/api/admin/games/configs/${id}`, { method:'DELETE' });
+  await fetch(`/api/admin/games/${id}`, { method:'DELETE' });
   _loaded.delete('administration:games');
   await loadGamesList();
 }

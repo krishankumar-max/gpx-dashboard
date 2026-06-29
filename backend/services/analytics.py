@@ -96,10 +96,18 @@ class AnalyticsService:
         return result
 
     def get_configured_offer_ids(self) -> frozenset[str]:
+        """
+        Return offer_ids for game configs that are actively configured.
+
+        Excludes records with campaign_status == "pending" — these are
+        auto-seeded stubs that have not yet been reviewed by an admin.
+        Pending offers are intentionally hidden from all dashboard views.
+        """
         return frozenset(
             str(cfg.get("offer_id", "")).strip()
             for cfg in self.get_game_configs()
             if str(cfg.get("offer_id", "")).strip()
+            and cfg.get("campaign_status") != "pending"
         )
 
     def get_configured_offer_names(self) -> frozenset[str]:
@@ -168,9 +176,10 @@ class AnalyticsService:
         df["revenue"] = df["sapphyre_revenue"]
         df.loc[_config_mask, "revenue"] = df.loc[_config_mask, "config_revenue"]
 
+        # Always filter to configured offers. If no game configs exist, returns
+        # an empty DataFrame — dashboards must not display raw/unconfigured offers.
         _conf_ids = self.get_configured_offer_ids()
-        if _conf_ids:
-            df = df[df["offer_id"].isin(_conf_ids)]
+        df = df[df["offer_id"].isin(_conf_ids)]
 
         self._cache.set("edf", df, ttl=_CACHE_TTL_CFG)
         return df
@@ -356,7 +365,9 @@ class AnalyticsService:
             raw = raw[raw["partner"].isin(partners)]
         if offers and "offerName" in raw.columns:
             raw = raw[raw["offerName"].isin(offers)]
-        elif conf_names and "offerName" in raw.columns:
+        elif "offerName" in raw.columns:
+            # No explicit offer filter — restrict to configured offers only.
+            # Empty conf_names (no game configs) → empty result, by design.
             raw = raw[raw["offerName"].isin(conf_names)]
         if goals and "goal" in raw.columns:
             raw = raw[raw["goal"].isin(goals)]
@@ -396,7 +407,8 @@ class AnalyticsService:
                 raw = raw[raw["partner"].isin(partners)]
             if offers and "offerName" in raw.columns:
                 raw = raw[raw["offerName"].isin(offers)]
-            elif conf_names and "offerName" in raw.columns:
+            elif "offerName" in raw.columns:
+                # No explicit offer filter — restrict to configured offers only.
                 raw = raw[raw["offerName"].isin(conf_names)]
             if goals and "goal" in raw.columns:
                 raw = raw[raw["goal"].isin(goals)]
