@@ -166,6 +166,23 @@ async function _initAuth() {
   });
 }
 
+async function authLoginWithGoogle() {
+  if (!_sbClient) return;
+  const errEl = document.getElementById('auth-error');
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+  const { error } = await _sbClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + '/' },
+  });
+
+  // Only reaches here on immediate error (e.g. OAuth not configured).
+  // On success the browser redirects to Google; onAuthStateChange handles the return.
+  if (error) {
+    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message || 'Google sign-in failed.'; errEl.style.display = 'block'; }
+  }
+}
+
 async function authLogin() {
   if (!_sbClient) return;
   const email    = (document.getElementById('auth-email')?.value || '').trim();
