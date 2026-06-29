@@ -1,0 +1,335 @@
+"""
+Sapphyre Postbacks API fetcher.
+
+Architecture
+------------
+- requests.Session with HTTPAdapter (pool_connections=40, pool_maxsize=40)
+- ThreadPoolExecutor(max_workers=40) — one thread per page
+- GET with query params (not POST with JSON body)
+- Response key: data["payload"]  (not "data")
+- Retry forever on 429 / timeout / connection errors with exponential backoff
+- Strict validation: raises RuntimeError if fetched row count != server total
+
+Usage
+-----
+    from backend.fetcher import fetch_day_sync
+    import datetime as dt
+
+    rows = fetch_day_sync(dt.date(2026, 6, 3))
+    print(len(rows))
+"""
+
+import datetime as dt
+import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
+
+import requests
+from requests.adapters import HTTPAdapter
+from loguru import logger
+
+from backend.config import (
+    SAPPHYRE_API_KEY,
+    SAPPHYRE_BASE_URL,
+    SAPPHYRE_TIMEZONE,
+    SYNC_WORKERS,
+    SYNC_PAGE_SIZE,
+    HTTP_TIMEOUT_SECONDS,
+    KEEP_COLS,
+)
+
+# Type alias for the progress callback: (pages_done, pages_total, rows_so_far) -> None
+_ProgressCB = Callable[[int, int, int], None]
+
+# ── Backoff settings ──────────────────────────────────────────────────────────
+_BACKOFF_BASE: float = 2.0      # seconds for first retry
+_BACKOFF_STEP: float = 2.0      # added on each subsequent retry
+_BACKOFF_MAX: float = 30.0      # ceiling
+
+
+def _make_session() -> requests.Session:
+    """Create a requests.Session with a large connection pool."""
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=SYNC_WORKERS,
+        pool_maxsize=SYNC_WORKERS,
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update({
+        "apiKey": SAPPHYRE_API_KEY,
+        "Accept": "application/json",
+    })
+    return session
+
+
+def _build_params(
+    date: dt.date,
+    skip: int,
+    limit: int,
+    partner_ids: list[int] | None = None,
+) -> dict[str, Any]:
+    """
+    Build GET query parameters for one page.
+
+    If *partner_ids* is supplied, the `partner` key is added as a list so that
+    requests sends: ``partner=1081&partner=2050&partner=3001``.
+    The Sapphyre API interprets repeated `partner` params as an OR filter,
+    returning only postbacks whose `partner` field matches one of those IDs.
+    """
+    tz_suffix = "+05:30"
+    params: dict[str, Any] = {
+        "fromDate": f"{date.isoformat()}T00:00:00{tz_suffix}",
+        "toDate":   f"{(date + dt.timedelta(days=1)).isoformat()}T00:00:00{tz_suffix}",
+        "timezone": SAPPHYRE_TIMEZONE,
+        "skip":     skip,
+        "limit":    limit,
+    }
+    if partner_ids:
+        params["partner"] = partner_ids   # requests serialises as repeated params
+    return params
+
+
+def _filter_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Keep only KEEP_COLS from a raw API row."""
+    return {k: row.get(k) for k in KEEP_COLS}
+
+
+# ── Single-page fetch with infinite retry ────────────────────────────────────
+
+def _fetch_page(
+    session: requests.Session,
+    date: dt.date,
+    skip: int,
+    partner_ids: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Fetch one page (skip offset) for *date*.
+
+    Retries forever on:
+      - HTTP 429 (rate limited)
+      - requests.Timeout
+      - requests.ConnectionError
+
+    Raises immediately on any other HTTP error (4xx except 429, 5xx).
+
+    Returns the filtered rows for this page.
+    """
+    params = _build_params(date, skip=skip, limit=SYNC_PAGE_SIZE, partner_ids=partner_ids)
+    wait = _BACKOFF_BASE
+    attempt = 0
+
+    while True:
+        attempt += 1
+        try:
+            resp = session.get(
+                SAPPHYRE_BASE_URL,
+                params=params,
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+
+            # ── Rate limit: back off and retry ───────────────────────────────
+            if resp.status_code == 429:
+                retry_after = float(resp.headers.get("Retry-After", wait))
+                sleep_for = max(retry_after, wait)
+                logger.warning(
+                    f"[{date}] skip={skip} → 429 rate-limit "
+                    f"(attempt {attempt}). Sleeping {sleep_for:.1f}s…"
+                )
+                time.sleep(sleep_for)
+                wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+                continue
+
+            # ── Server errors: back off and retry ────────────────────────────
+            if resp.status_code >= 500:
+                logger.warning(
+                    f"[{date}] skip={skip} → HTTP {resp.status_code} "
+                    f"(attempt {attempt}). Sleeping {wait:.1f}s…"
+                )
+                time.sleep(wait)
+                wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+                continue
+
+            # ── Client errors (4xx except 429): fatal ─────────────────────────
+            if resp.status_code >= 400:
+                resp.raise_for_status()
+
+            # ── Success ───────────────────────────────────────────────────────
+            data = resp.json()
+            rows: list[dict] = data.get("payload", [])
+
+            if not isinstance(rows, list):
+                # Unexpected response shape — treat as transient and retry
+                logger.warning(
+                    f"[{date}] skip={skip} → unexpected payload type "
+                    f"{type(rows).__name__} (attempt {attempt}). Retrying…"
+                )
+                time.sleep(wait)
+                wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+                continue
+
+            return [_filter_row(r) for r in rows]
+
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            logger.warning(
+                f"[{date}] skip={skip} → network error (attempt {attempt}): "
+                f"{exc}. Sleeping {wait:.1f}s…"
+            )
+            time.sleep(wait)
+            wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+
+
+# ── Probe total row count ─────────────────────────────────────────────────────
+
+def _probe_total(
+    session: requests.Session,
+    date: dt.date,
+    partner_ids: list[int] | None = None,
+) -> int:
+    """
+    Fire a limit=1 request to read the server-reported total for *date*.
+    Retries indefinitely on 429 / network errors.
+
+    If *partner_ids* is supplied the total reflects only those publishers,
+    so the subsequent row-count validation stays accurate.
+    """
+    params = _build_params(date, skip=0, limit=1, partner_ids=partner_ids)
+    wait = _BACKOFF_BASE
+
+    while True:
+        try:
+            resp = session.get(
+                SAPPHYRE_BASE_URL,
+                params=params,
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+            if resp.status_code == 429:
+                sleep_for = float(resp.headers.get("Retry-After", wait))
+                logger.warning(f"[{date}] probe 429. Sleeping {sleep_for:.1f}s…")
+                time.sleep(sleep_for)
+                wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+                continue
+            if resp.status_code >= 500:
+                logger.warning(
+                    f"[{date}] probe HTTP {resp.status_code}. "
+                    f"Sleeping {wait:.1f}s…"
+                )
+                time.sleep(wait)
+                wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+                continue
+            resp.raise_for_status()
+            total: int = resp.json().get("total", 0)
+            logger.info(f"[{date}] Server total: {total:,} rows")
+            return total
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            logger.warning(f"[{date}] probe network error: {exc}. Sleeping {wait:.1f}s…")
+            time.sleep(wait)
+            wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def fetch_day_sync(
+    date: dt.date,
+    partner_ids: list[int] | None = None,
+    on_page_done: _ProgressCB | None = None,
+    is_live: bool = False,
+) -> list[dict[str, Any]]:
+    """
+    Fetch ALL postback rows for *date* synchronously.
+
+    Parameters
+    ----------
+    date         : Calendar date to fetch (IST-aligned day window).
+    partner_ids  : Integer publisher IDs sent as repeated query params
+                   (``partner=1081&partner=2050``).  None = fetch all.
+    on_page_done : Optional callback called after every page completes.
+                   Signature: ``(pages_done: int, pages_total: int,
+                                  rows_so_far: int) -> None``.
+                   Invoked from the ThreadPoolExecutor threads — must be
+                   thread-safe (use a lock internally if you mutate state).
+    is_live      : When True (today's date), row-count validation is bypassed
+                   because live data grows during the fetch window.  A warning
+                   is logged instead of raising RuntimeError.
+
+    Guarantees
+    ----------
+    - Shared requests.Session across all page threads (40-connection pool).
+    - ThreadPoolExecutor(SYNC_WORKERS) — one thread per page.
+    - Every page retries forever (429 / timeout / 5xx).
+    - Raises RuntimeError if fetched count != server-reported total
+      (historical dates only; bypassed when is_live=True).
+
+    Returns a list of dicts containing only KEEP_COLS.
+    """
+    session  = _make_session()
+    pid_list = partner_ids if partner_ids else None
+
+    # ── Step 1: probe total rows for this date (filtered by partner IDs) ───────
+    total = _probe_total(session, date, partner_ids=pid_list)
+
+    if total == 0:
+        logger.info(f"[{date}] No data — skipping.")
+        if on_page_done:
+            on_page_done(0, 0, 0)
+        return []
+
+    # ── Step 2: compute page offsets ──────────────────────────────────────────
+    offsets = list(range(0, total, SYNC_PAGE_SIZE))
+    pub_note = f"publishers={partner_ids}" if pid_list else "all publishers"
+    logger.info(
+        f"[{date}] {total:,} rows / {len(offsets)} pages "
+        f"/ {SYNC_WORKERS} workers  [{pub_note}]"
+    )
+
+    # ── Step 3: fan-out — one future per page ────────────────────────────────
+    results: dict[int, list[dict[str, Any]]] = {}
+
+    with ThreadPoolExecutor(max_workers=SYNC_WORKERS) as executor:
+        future_to_offset = {
+            executor.submit(_fetch_page, session, date, offset, pid_list): offset
+            for offset in offsets
+        }
+        completed = 0
+        for future in as_completed(future_to_offset):
+            offset    = future_to_offset[future]
+            page_rows = future.result()
+            results[offset] = page_rows
+            completed += 1
+            rows_so_far = sum(len(v) for v in results.values())
+
+            # ── Emit callback (every 10 pages or at the end) ─────────────
+            if on_page_done and (completed % 10 == 0 or completed == len(offsets)):
+                on_page_done(completed, len(offsets), rows_so_far)
+
+            # ── Server-side log every 20 pages ────────────────────────────
+            if completed % 20 == 0 or completed == len(offsets):
+                logger.info(
+                    f"[{date}] {completed}/{len(offsets)} pages  "
+                    f"({rows_so_far:,} rows so far)"
+                )
+
+    # ── Step 4: flatten in offset order (deterministic) ───────────────────────
+    all_rows: list[dict[str, Any]] = []
+    for offset in offsets:
+        all_rows.extend(results[offset])
+
+    # ── Step 5: validation ────────────────────────────────────────────────────
+    fetched = len(all_rows)
+    if fetched != total:
+        if is_live:
+            # Today's data grows during the fetch — count mismatch is expected.
+            logger.warning(
+                f"[{date}] Live data window detected. Validation bypassed. "
+                f"(probed {total:,}, fetched {fetched:,} rows)"
+            )
+        else:
+            raise RuntimeError(
+                f"[{date}] Row-count mismatch: "
+                f"expected {total:,}, fetched {fetched:,}. "
+                "Sync aborted — do not save partial data."
+            )
+    else:
+        logger.success(f"[{date}] ✓ {fetched:,} rows validated.")
+    return all_rows

@@ -1,0 +1,61 @@
+# /etc/systemd/system/sapphyre.service
+#
+# Install:
+#   sudo cp deploy/sapphyre.service /etc/systemd/system/sapphyre.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable sapphyre
+#   sudo systemctl start sapphyre
+#
+# Management:
+#   sudo systemctl status  sapphyre
+#   sudo systemctl restart sapphyre
+#   sudo journalctl -u sapphyre -f
+
+[Unit]
+Description=Sapphyre Analytics Dashboard (Gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+NotifyAccess=all
+
+User=sapphyre
+Group=sapphyre
+WorkingDirectory=/opt/sapphyre
+
+# Load environment from .env file
+EnvironmentFile=/opt/sapphyre/.env
+
+# Create runtime dirs before start
+ExecStartPre=/bin/mkdir -p /var/log/sapphyre /var/run/sapphyre
+ExecStartPre=/bin/chown sapphyre:sapphyre /var/log/sapphyre /var/run/sapphyre
+
+ExecStart=/opt/sapphyre/.venv/bin/gunicorn \
+    --config /opt/sapphyre/gunicorn.conf.py \
+    "app:app"
+
+ExecReload=/bin/kill -s HUP $MAINPID
+
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/sapphyre/data /var/log/sapphyre /var/run/sapphyre
+
+# Resource limits — conservative for t2.micro (1 GB RAM)
+LimitNOFILE=65536
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

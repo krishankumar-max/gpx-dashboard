@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Perfomix</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="icon" type="image/png" sizes="128x128" href="/static/favicon.png">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.min.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+</head>
+
+<body
+  data-default-from="{{ default_from }}"
+  data-default-to="{{ default_to }}"
+  data-min-date="{{ min_date }}"
+  data-max-date="{{ max_date }}"
+>
+
+<!-- ══ Sidebar ═══════════════════════════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+
+  <!-- Logo -->
+  <div class="sb-logo">
+    <div class="sb-gem"><img src="/static/favicon.png" alt="GPX" style="width:22px;height:22px;object-fit:contain;border-radius:4px;"></div>
+    <div class="sb-names">
+      <span class="sb-product">Game Perfomix</span>
+      <span class="sb-tagline">Analytics</span>
+    </div>
+  </div>
+
+  <!-- Nav groups -->
+  <nav class="kc-nav">
+
+    <!-- Overview group -->
+    <div class="sb-group">
+      <div class="sb-group-hdr" onclick="toggleGroup('g-overview', this)">
+        <span class="sb-group-left">
+          <i class="fas fa-house sb-g-icon"></i>
+          <span class="sb-label sb-g-label">Overview</span>
+        </span>
+        <i class="fas fa-chevron-down sb-g-chev sb-label" id="gc-g-overview"></i>
+      </div>
+      <div class="sb-group-items" id="g-overview">
+        <a class="sb-item active" data-page="overview" onclick="navigateTo('overview')">
+          <span class="sb-icon"><i class="fas fa-house"></i></span>
+          <span class="sb-label">Home</span>
+        </a>
+        <a class="sb-item" data-page="health" onclick="navigateTo('health')">
+          <span class="sb-icon"><i class="fas fa-heart-pulse"></i></span>
+          <span class="sb-label">Health Check</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Analyse group -->
+    <div class="sb-group">
+      <div class="sb-group-hdr" onclick="toggleGroup('g-analyse', this)">
+        <span class="sb-group-left">
+          <i class="fas fa-chart-line sb-g-icon"></i>
+          <span class="sb-label sb-g-label">Analyse</span>
+        </span>
+        <i class="fas fa-chevron-down sb-g-chev sb-label" id="gc-g-analyse"></i>
+      </div>
+      <div class="sb-group-items" id="g-analyse">
+        <a class="sb-item" data-page="analytics" onclick="navigateTo('analytics')">
+          <span class="sb-icon"><i class="fas fa-chart-line"></i></span>
+          <span class="sb-label">Performance</span>
+        </a>
+        <a class="sb-item" data-page="publishers" onclick="navigateTo('publishers')">
+          <span class="sb-icon"><i class="fas fa-handshake"></i></span>
+          <span class="sb-label">Publishers</span>
+        </a>
+        <a class="sb-item" data-page="offers" onclick="navigateTo('offers')">
+          <span class="sb-icon"><i class="fas fa-tag"></i></span>
+          <span class="sb-label">Offers</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- System group -->
+    <div class="sb-group">
+      <div class="sb-group-hdr" onclick="toggleGroup('g-system', this)">
+        <span class="sb-group-left">
+          <i class="fas fa-shield-halved sb-g-icon"></i>
+          <span class="sb-label sb-g-label">System</span>
+        </span>
+        <i class="fas fa-chevron-down sb-g-chev sb-label" id="gc-g-system"></i>
+      </div>
+      <div class="sb-group-items" id="g-system">
+        <a class="sb-item" data-page="administration" onclick="navigateTo('administration')">
+          <span class="sb-icon"><i class="fas fa-shield-halved"></i></span>
+          <span class="sb-label">Administration</span>
+        </a>
+      </div>
+    </div>
+
+  </nav>
+
+  <!-- Footer: sync status -->
+  <div class="sb-footer">
+    <div class="sb-status-row">
+      <span class="sb-status-dot" id="sb-dot"></span>
+      <div class="sb-label sb-status-detail">
+        <span class="sb-status-text" id="sb-status-text">Connecting…</span>
+        <span class="sb-status-sub" id="sb-status-sub"></span>
+      </div>
+    </div>
+  </div>
+
+</aside>
+
+<!-- Collapse toggle (sibling to aside, overlaps sidebar edge) -->
+<button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()" title="Collapse sidebar">
+  <i class="fas fa-chevron-left" id="sb-chevron"></i>
+</button>
+
+<div class="sb-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
+
+<!-- ══ Shell ══════════════════════════════════════════════════════════════════ -->
+<div class="shell">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="tb-left">
+      <button class="tb-hamburger" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="tb-breadcrumb">
+        <span class="tb-product-name">Game Perfomix</span>
+        <i class="fas fa-chevron-right tb-sep"></i>
+        <span class="tb-page-name" id="tb-page-name">Overview</span>
+      </div>
+    </div>
+    <div class="tb-right">
+      <div class="tb-badge" id="tb-date-badge">
+        <i class="far fa-calendar-alt"></i>
+        <span id="tb-date-text">—</span>
+      </div>
+      <div class="tb-badge tb-badge-status" id="tb-sync-badge">
+        <i class="fas fa-circle-notch fa-spin"></i>
+        <span>Loading…</span>
+      </div>
+      <button class="tb-alert-bell" id="btn-alert-bell" onclick="toggleAlertDrawer()" title="Alerts">
+        <i class="fas fa-bell"></i>
+        <span class="tab-badge" id="alert-bell-badge" style="display:none"></span>
+      </button>
+      <button class="tb-btn-refresh" id="btn-refresh" onclick="refreshAll()">
+        <i class="fas fa-arrows-rotate"></i> Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Alert Drawer -->
+  <div id="alert-drawer-overlay" class="alert-drawer-overlay" onclick="closeAlertDrawer()"></div>
+  <div id="alert-drawer" class="alert-drawer">
+    <div class="alert-drawer-header">
+      <span class="alert-drawer-title">Alerts &amp; Anomalies</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="alert-drawer-link" onclick="navigateTo('health');closeAlertDrawer()">
+          View Health Check <i class="fas fa-arrow-right" style="font-size:10px"></i>
+        </button>
+        <button class="alert-drawer-close" onclick="closeAlertDrawer()"><i class="fas fa-xmark"></i></button>
+      </div>
+    </div>
+    <div class="alert-drawer-body" id="alert-drawer-body">
+      <div class="hc-no-alerts"><i class="fas fa-spinner fa-spin" style="font-size:18px"></i> Loading…</div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filterbar" id="filterbar">
+    <div class="fb-inner">
+
+      <div class="fb-group">
+        <label class="fb-label">From</label>
+        <input type="date" id="from-date" class="fb-input"
+               value="{{ default_from }}" min="{{ min_date }}" max="{{ max_date }}">
+      </div>
+
+      <div class="fb-group">
+        <label class="fb-label">To</label>
+        <input type="date" id="to-date" class="fb-input"
+               value="{{ default_to }}" min="{{ min_date }}" max="{{ max_date }}">
+      </div>
+
+      <div class="fb-group fb-grow">
+        <label class="fb-label">Partner</label>
+        <select id="filter-partner" multiple placeholder="All partners…" autocomplete="off"></select>
+      </div>
+
+      <div class="fb-group fb-grow">
+        <label class="fb-label">Offer</label>
+        <select id="filter-offer" multiple placeholder="All offers…" autocomplete="off"></select>
+      </div>
+
+      <div class="fb-actions">
+        <button class="fb-btn-apply" onclick="refreshAll()">
+          <i class="fas fa-eye"></i> View
+        </button>
+        <button class="fb-btn-reset" onclick="resetFilters()">Reset</button>
+      </div>
+
+      <div class="fb-auto-hint">
+        <i class="fas fa-bolt"></i> Filters apply automatically
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Page content -->
+  <main class="content" id="content">
+
+    <div id="no-data-notice" class="notice-banner d-none">
+      <div class="notice-icon"><i class="fas fa-database"></i></div>
+      <div class="notice-body">
+        <strong>No data available.</strong>
+        Run <code>python scripts/sync_sapphyre.py</code> to fetch data, then refresh.
+      </div>
+    </div>
+
+    <!-- ══ PAGE: Overview ═══════════════════════════════════════════════════ -->
+    <section id="page-overview" class="page active">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Home</h2>
+          <p class="page-subtitle">Business health at a glance</p>
+        </div>
+      </div>
+
+      <!-- 7 KPI cards -->
+      <div class="kpi-grid kpi-grid-7" id="ov-kpi-row">
+        <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+        <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+        <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+        <div class="kpi-skeleton"></div>
+      </div>
+
+      <!-- Period comparisons -->
+      <div class="card mt-5">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3 class="card-title">Period Comparison</h3>
+            <p class="card-subtitle" id="ov-cmp-subtitle">Today vs Yesterday · Current Week vs Prev Week · MTD vs Last Month</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="ov-comparisons" class="comparison-grid">
+            <div class="kpi-skeleton" style="height:160px"></div>
+            <div class="kpi-skeleton" style="height:160px"></div>
+            <div class="kpi-skeleton" style="height:160px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance trend chart -->
+      <div class="card mt-5">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3 class="card-title">Performance Trend</h3>
+            <p class="card-subtitle">Revenue ($) · Margin % · Conversions</p>
+          </div>
+          <div class="trend-controls">
+            <button class="trend-btn active" data-days="7"  onclick="setTrendDays(this,7)">7D</button>
+            <button class="trend-btn"        data-days="14" onclick="setTrendDays(this,14)">14D</button>
+            <button class="trend-btn"        data-days="30" onclick="setTrendDays(this,30)">30D</button>
+            <button class="trend-btn"        data-days="0"  onclick="setTrendDays(this,0)">Custom</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="chart-ov-trend" class="chart-area chart-lg"></div>
+        </div>
+      </div>
+
+      <!-- Leaderboards -->
+      <div class="grid-2col mt-5">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Top 10 Publishers</h3>
+              <p class="card-subtitle">Sorted by Revenue · then Margin %</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="lb-table">
+              <thead>
+                <tr>
+                  <th style="width:28px">#</th>
+                  <th>Partner</th>
+                  <th class="th-r">Revenue</th>
+                  <th class="th-r">Cost</th>
+                  <th class="th-r">Profit</th>
+                  <th class="th-r">Margin %</th>
+                </tr>
+              </thead>
+              <tbody id="lb-publishers"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Top 10 Offers</h3>
+              <p class="card-subtitle">Sorted by Revenue · then Margin %</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="lb-table">
+              <thead>
+                <tr>
+                  <th style="width:28px">#</th>
+                  <th>Offer</th>
+                  <th class="th-r">Revenue</th>
+                  <th class="th-r">Cost</th>
+                  <th class="th-r">Profit</th>
+                  <th class="th-r">Margin %</th>
+                </tr>
+              </thead>
+              <tbody id="lb-offers"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Publishers ══════════════════════════════════════════════════ -->
+    <section id="page-publishers" class="page">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Publishers</h2>
+          <p class="page-subtitle">Publisher performance and offer breakdown</p>
+        </div>
+      </div>
+
+      <!-- Single tab — Deep Dive removed (use row-click drill-down modal) -->
+      <div class="tab-content active" data-tab="summary" id="pub-tab-summary">
+
+        <!-- 4 KPI cards (cards 1 + 4 are clickable) -->
+        <div class="kpi-grid kpi-grid-4" id="pub-kpi-row">
+          <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+          <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid-2col mt-5">
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Revenue by Publisher</h3>
+                <p class="card-subtitle">Others grouped</p>
+              </div>
+              <select id="pub-rev-topn" class="card-select" onchange="renderPubRevenueChart()">
+                <option value="10" selected>Top 10</option>
+                <option value="20">Top 20</option>
+                <option value="30">Top 30</option>
+                <option value="50">Top 50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="card-body">
+              <div id="chart-pub-revenue" class="chart-area" style="min-height:320px"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Margin % by Publisher</h3>
+                <p class="card-subtitle">Others grouped</p>
+              </div>
+              <select id="pub-margin-topn" class="card-select" onchange="renderPubMarginChart()">
+                <option value="10" selected>Top 10</option>
+                <option value="20">Top 20</option>
+                <option value="30">Top 30</option>
+                <option value="50">Top 50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="card-body">
+              <div id="chart-pub-margin" class="chart-area" style="min-height:320px"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- All Publishers table — click any row to drill down -->
+        <div class="card mt-5">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">All Publishers</h3>
+              <span id="pub-table-badge" class="count-badge"></span>
+            </div>
+            <span style="font-size:11.5px;color:var(--txt-muted)">
+              <i class="fas fa-hand-pointer" style="margin-right:4px"></i>Click a row to drill down
+            </span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Publisher</th>
+                  <th class="th-num">Revenue</th>
+                  <th class="th-num">Cost</th>
+                  <th class="th-num">Profit</th>
+                  <th class="th-num">Margin %</th>
+                  <th class="th-num">Conversions</th>
+                  <th class="th-num">Offers</th>
+                  <th class="th-center">Status</th>
+                </tr>
+              </thead>
+              <tbody id="pub-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+
+    </section>
+
+    <!-- ══ PAGE: Publisher Profile (360°) ══════════════════════════════════ -->
+    <section id="page-publisher-detail" class="page">
+
+      <!-- Header: back + identity + status -->
+      <div class="pp-header">
+        <button class="pp-back-btn" onclick="navigateTo('publishers')">
+          <i class="fas fa-arrow-left"></i> All Publishers
+        </button>
+        <div class="pp-identity">
+          <div>
+            <h2 class="page-title" id="pp-name">—</h2>
+            <p class="page-subtitle" id="pp-sub">Publisher profile</p>
+          </div>
+          <div id="pp-status" style="margin-left:12px"></div>
+        </div>
+      </div>
+
+      <!-- KPI strip (6 cards) -->
+      <div class="kpi-grid kpi-grid-6" id="pp-kpis"></div>
+
+      <!-- Performance Trend (single chart, metric switcher) -->
+      <div class="card mt-5">
+        <div class="card-header card-toolbar" style="flex-wrap:wrap;gap:8px">
+          <h3 class="card-title">Performance Trend</h3>
+          <div class="btn-group" id="pp-metric-btns">
+            <button class="trend-btn active" data-m="revenue"    onclick="setPPMetric(this,'revenue')">Revenue</button>
+            <button class="trend-btn"        data-m="profit"     onclick="setPPMetric(this,'profit')">Profit</button>
+            <button class="trend-btn"        data-m="margin_pct" onclick="setPPMetric(this,'margin_pct')">Margin %</button>
+            <button class="trend-btn"        data-m="installs"   onclick="setPPMetric(this,'installs')">Conversions</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="chart-pp-trend" class="chart-area chart-xl"></div>
+        </div>
+      </div>
+
+      <!-- Action Queue (top actionable offers per status) -->
+      <div class="card mt-5" id="pp-action-queue">
+        <div class="card-header card-toolbar">
+          <h3 class="card-title">Action Queue</h3>
+          <span style="font-size:11.5px;color:var(--txt-muted)">Top offers needing attention — click to drill down</span>
+        </div>
+        <div id="pp-aq-body"></div>
+      </div>
+
+      <!-- Offer Performance (filters + sorting + pagination) -->
+      <div class="card mt-5" id="pp-offers-card">
+        <div class="card-header card-toolbar">
+          <div class="toolbar-left">
+            <h3 class="card-title">Offer Performance</h3>
+            <span class="count-badge" id="pp-offers-badge">—</span>
+          </div>
+          <span style="font-size:11.5px;color:var(--txt-muted)">
+            <i class="fas fa-hand-pointer" style="margin-right:4px"></i>Click to drill down
+          </span>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="pp-filter-bar">
+          <div class="pp-filter-search">
+            <i class="fas fa-magnifying-glass pp-fi"></i>
+            <input type="text" id="pp-offer-search" class="pp-filter-input"
+                   placeholder="Search offers…" oninput="ppOfferFilter()">
+          </div>
+          <select id="pp-offer-status" class="pp-filter-select" onchange="ppOfferFilter()">
+            <option value="">All Status</option>
+            <option value="Scale">Scale</option>
+            <option value="Monitor">Monitor</option>
+            <option value="Optimize">Optimize</option>
+            <option value="Pause">Pause</option>
+          </select>
+          <select id="pp-offer-active" class="pp-filter-select" onchange="ppOfferFilter()">
+            <option value="">Active &amp; Paused</option>
+            <option value="active">Active only</option>
+            <option value="paused">Paused only</option>
+          </select>
+          <div class="pp-filter-range">
+            <span class="pp-filter-range-label">Margin %</span>
+            <input type="number" id="pp-margin-min" class="pp-filter-range-input"
+                   placeholder="min" oninput="ppOfferFilter()">
+            <span class="pp-filter-range-sep">–</span>
+            <input type="number" id="pp-margin-max" class="pp-filter-range-input"
+                   placeholder="max" oninput="ppOfferFilter()">
+          </div>
+          <div class="pp-filter-range">
+            <span class="pp-filter-range-label">Conversions</span>
+            <input type="number" id="pp-install-min" class="pp-filter-range-input"
+                   placeholder="min" oninput="ppOfferFilter()">
+            <span class="pp-filter-range-sep">–</span>
+            <input type="number" id="pp-install-max" class="pp-filter-range-input"
+                   placeholder="max" oninput="ppOfferFilter()">
+          </div>
+          <button class="pp-filter-reset" onclick="ppOfferReset()" title="Reset filters">
+            <i class="fas fa-rotate-left"></i>
+          </button>
+        </div>
+
+        <!-- Sortable table with sticky header -->
+        <div class="table-wrap pp-offers-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="pp-sort-th" id="ppth-offerName" onclick="ppSortBy('offerName')">
+                  Offer <span class="pp-sort-icon" id="ppi-offerName">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="ppth-revenue" onclick="ppSortBy('revenue')">
+                  Revenue <span class="pp-sort-icon" id="ppi-revenue">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="ppth-profit" onclick="ppSortBy('profit')">
+                  Profit <span class="pp-sort-icon pp-sort-active" id="ppi-profit">↓</span>
+                </th>
+                <th class="th-num pp-sort-th" id="ppth-margin_pct" onclick="ppSortBy('margin_pct')">
+                  Margin % <span class="pp-sort-icon" id="ppi-margin_pct">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="ppth-installs" onclick="ppSortBy('installs')">
+                  Conversions <span class="pp-sort-icon" id="ppi-installs">⇅</span>
+                </th>
+                <th class="th-center" style="width:52px">Trend</th>
+                <th class="th-num pp-sort-th" id="ppth-last_activity" onclick="ppSortBy('last_activity')"
+                    style="width:110px">
+                  Last Active <span class="pp-sort-icon" id="ppi-last_activity">⇅</span>
+                </th>
+                <th class="th-center">Status</th>
+              </tr>
+            </thead>
+            <tbody id="pp-offers-body">
+              <tr><td colspan="8" class="td-empty">
+                <div class="hc-loading"><i class="fas fa-circle-notch fa-spin"></i></div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pp-pagination" id="pp-pagination"></div>
+      </div>
+
+      <!-- Concentration + Ranking + Activity -->
+      <div class="grid-2col mt-5" style="align-items:start">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Revenue Concentration</h3>
+            <p class="card-subtitle">Top offer dependency risk</p>
+          </div>
+          <div class="card-body" id="pp-conc-body" style="padding-top:0"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Publisher Ranking</h3></div>
+            <div class="card-body" id="pp-rank-body" style="padding-top:0"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Activity</h3></div>
+            <div class="card-body" id="pp-act-body" style="padding-top:0"></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Offer Detail (360° Offer Profile) ══════════════════════════════ -->
+    <section id="page-offer-detail" class="page">
+
+      <!-- Breadcrumb + header -->
+      <div class="po-header">
+        <nav class="po-breadcrumb">
+          <button class="po-crumb-btn" onclick="navigateTo('offers')">
+            <i class="fas fa-arrow-left"></i> Offers
+          </button>
+          <i class="fas fa-chevron-right po-crumb-sep"></i>
+          <span class="po-crumb-current" id="op-offer-crumb">—</span>
+        </nav>
+        <div class="po-title-row">
+          <div>
+            <h2 class="page-title" id="op-title">—</h2>
+            <p class="page-subtitle" id="op-sub">—</p>
+          </div>
+          <div id="op-status" style="margin-left:12px;align-self:center"></div>
+        </div>
+      </div>
+
+      <!-- KPI strip (6 cards) -->
+      <div class="kpi-grid kpi-grid-6" id="op-kpis"></div>
+
+      <!-- Performance Trend -->
+      <div class="card mt-5">
+        <div class="card-header card-toolbar" style="flex-wrap:wrap;gap:8px">
+          <h3 class="card-title">Performance Trend</h3>
+          <div class="btn-group" id="op-metric-btns">
+            <button class="trend-btn active" data-m="revenue"    onclick="setOPMetric(this,'revenue')">Revenue</button>
+            <button class="trend-btn"        data-m="profit"     onclick="setOPMetric(this,'profit')">Profit</button>
+            <button class="trend-btn"        data-m="margin_pct" onclick="setOPMetric(this,'margin_pct')">Margin %</button>
+            <button class="trend-btn"        data-m="installs"   onclick="setOPMetric(this,'installs')">Conversions</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="chart-op-trend" class="chart-area chart-xl"></div>
+        </div>
+      </div>
+
+      <!-- Action Queue -->
+      <div class="card mt-5" id="op-action-queue">
+        <div class="card-header card-toolbar">
+          <h3 class="card-title">Action Queue</h3>
+          <span style="font-size:11.5px;color:var(--txt-muted)">Top publishers needing attention — click to drill down</span>
+        </div>
+        <div id="op-aq-body"></div>
+      </div>
+
+      <!-- Publisher Performance (Main Section) -->
+      <div class="card mt-5" id="op-publishers-card">
+        <div class="card-header card-toolbar">
+          <div class="toolbar-left">
+            <h3 class="card-title">Publisher Performance</h3>
+            <span class="count-badge" id="op-pub-badge">—</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="font-size:11.5px;color:var(--txt-muted)">
+              <i class="fas fa-hand-pointer" style="margin-right:4px"></i>Click to drill down
+            </span>
+            <button
+              class="btn-outline-sm"
+              onclick="window.location.href='/simulator?offer='+encodeURIComponent(_opOffer||'')"
+              title="Open RAI Allocation Simulator">
+              <i class="fas fa-sliders" style="margin-right:5px"></i>Simulator
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="pp-filter-bar">
+          <div class="pp-filter-search">
+            <i class="fas fa-magnifying-glass pp-fi"></i>
+            <input type="text" id="op-pub-search" class="pp-filter-input"
+                   placeholder="Search publishers…" oninput="opPubFilter()">
+          </div>
+          <select id="op-pub-status" class="pp-filter-select" onchange="opPubFilter()">
+            <option value="">All Status</option>
+            <option value="Scale">Scale</option>
+            <option value="Monitor">Monitor</option>
+            <option value="Optimize">Optimize</option>
+            <option value="Pause">Pause</option>
+          </select>
+          <select id="op-pub-active" class="pp-filter-select" onchange="opPubFilter()">
+            <option value="">Active &amp; Paused</option>
+            <option value="active">Active only</option>
+            <option value="paused">Paused only</option>
+          </select>
+          <div class="pp-filter-range">
+            <span class="pp-filter-range-label">Margin %</span>
+            <input type="number" id="op-margin-min" class="pp-filter-range-input"
+                   placeholder="min" oninput="opPubFilter()">
+            <span class="pp-filter-range-sep">–</span>
+            <input type="number" id="op-margin-max" class="pp-filter-range-input"
+                   placeholder="max" oninput="opPubFilter()">
+          </div>
+          <div class="pp-filter-range">
+            <span class="pp-filter-range-label">Conversions</span>
+            <input type="number" id="op-install-min" class="pp-filter-range-input"
+                   placeholder="min" oninput="opPubFilter()">
+            <span class="pp-filter-range-sep">–</span>
+            <input type="number" id="op-install-max" class="pp-filter-range-input"
+                   placeholder="max" oninput="opPubFilter()">
+          </div>
+          <button class="pp-filter-reset" onclick="opPubReset()" title="Reset filters">
+            <i class="fas fa-rotate-left"></i>
+          </button>
+        </div>
+
+        <!-- Sortable table with sticky header -->
+        <div class="table-wrap pp-offers-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="pp-sort-th" id="opth-partner" onclick="opSortBy('partner')">
+                  Publisher <span class="pp-sort-icon" id="opi-partner">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="opth-revenue" onclick="opSortBy('revenue')">
+                  Revenue <span class="pp-sort-icon" id="opi-revenue">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="opth-profit" onclick="opSortBy('profit')">
+                  Profit <span class="pp-sort-icon pp-sort-active" id="opi-profit">↓</span>
+                </th>
+                <th class="th-num pp-sort-th" id="opth-margin_pct" onclick="opSortBy('margin_pct')">
+                  Margin % <span class="pp-sort-icon" id="opi-margin_pct">⇅</span>
+                </th>
+                <th class="th-num pp-sort-th" id="opth-installs" onclick="opSortBy('installs')">
+                  Conversions <span class="pp-sort-icon" id="opi-installs">⇅</span>
+                </th>
+                <th class="th-center" style="width:52px">Trend</th>
+                <th class="th-num pp-sort-th" id="opth-last_activity" onclick="opSortBy('last_activity')"
+                    style="width:110px">
+                  Last Active <span class="pp-sort-icon" id="opi-last_activity">⇅</span>
+                </th>
+                <th class="th-center">Status</th>
+              </tr>
+            </thead>
+            <tbody id="op-pub-body">
+              <tr><td colspan="8" class="td-empty">
+                <div class="hc-loading"><i class="fas fa-circle-notch fa-spin"></i></div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pp-pagination" id="op-pagination"></div>
+      </div>
+
+      <!-- Funnel (offer-level, all publishers) -->
+      <div class="card mt-5" id="op-funnel-card">
+        <div class="card-header card-toolbar">
+          <span class="card-title">Conversion Funnel</span>
+          <span class="card-subtitle" id="op-funnel-subtitle" style="font-size:11.5px;color:var(--txt-muted)"></span>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="kpi-grid kpi-grid-4" id="op-funnel-kpis" style="gap:10px;margin-bottom:16px"></div>
+          <div id="op-funnel-notice"></div>
+          <div class="table-wrap">
+            <table class="data-table" id="op-funnel-table">
+              <thead><tr>
+                <th class="th-center" style="width:44px">Step</th>
+                <th>Goal</th>
+                <th class="th-num">Users</th>
+                <th class="th-num">Actual %</th>
+                <th class="th-num">Time To Complete</th>
+              </tr></thead>
+              <tbody id="op-funnel-body">
+                <tr><td colspan="5" class="td-empty"><div class="empty-state">
+                  <i class="fas fa-spinner fa-spin empty-icon"></i><p>Loading funnel…</p>
+                </div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revenue Concentration + Ranking & Activity -->
+      <div class="grid-2col mt-5" style="align-items:start">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Revenue Concentration</h3>
+            <p class="card-subtitle">Top publisher dependency risk</p>
+          </div>
+          <div class="card-body" id="op-conc-body" style="padding-top:0"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Offer Ranking</h3></div>
+            <div class="card-body" id="op-rank-body" style="padding-top:0"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Activity</h3></div>
+            <div class="card-body" id="op-act-body" style="padding-top:0"></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Publisher + Offer Detail ══════════════════════════════════════ -->
+    <section id="page-pub-offer" class="page">
+
+      <!-- Breadcrumb + header (dynamic — set by JS based on entry context) -->
+      <div class="po-header">
+        <nav class="po-breadcrumb" id="po-breadcrumb-nav"></nav>
+        <div class="po-title-row">
+          <div>
+            <h2 class="page-title" id="po-title">—</h2>
+            <p class="page-subtitle" id="po-sub">—</p>
+          </div>
+          <div id="po-status" style="margin-left:12px;align-self:center"></div>
+        </div>
+      </div>
+
+      <!-- KPI strip -->
+      <div class="kpi-grid kpi-grid-5" id="po-kpis"></div>
+
+      <!-- Trend -->
+      <div class="card mt-5">
+        <div class="card-header">
+          <span class="card-title">Performance Trend</span>
+          <div class="btn-group" id="po-metric-btns">
+            <button class="trend-btn active" data-m="revenue"    onclick="setPOMetric(this,'revenue')">Revenue</button>
+            <button class="trend-btn"        data-m="profit"     onclick="setPOMetric(this,'profit')">Profit</button>
+            <button class="trend-btn"        data-m="margin_pct" onclick="setPOMetric(this,'margin_pct')">Margin %</button>
+            <button class="trend-btn"        data-m="installs"   onclick="setPOMetric(this,'installs')">Conversions</button>
+          </div>
+        </div>
+        <div id="chart-po-trend" class="chart-area chart-xl"></div>
+      </div>
+
+      <!-- Funnel (publisher + offer scoped) -->
+      <div class="card mt-5" id="po-funnel-card">
+        <div class="card-header">
+          <span class="card-title">Conversion Funnel</span>
+          <span class="card-subtitle" id="po-funnel-subtitle" style="font-size:11.5px;color:var(--txt-muted)"></span>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="kpi-grid kpi-grid-4" id="po-funnel-kpis" style="gap:10px;margin-bottom:16px"></div>
+          <div id="po-funnel-notice"></div>
+          <div class="table-wrap">
+            <table class="data-table" id="po-funnel-table">
+              <thead><tr>
+                <th class="th-center" style="width:44px">Step</th>
+                <th>Goal</th>
+                <th class="th-num">Users</th>
+                <th class="th-num">Actual %</th>
+                <th class="th-num">Time To Complete</th>
+              </tr></thead>
+              <tbody id="po-funnel-body">
+                <tr><td colspan="5" class="td-empty"><div class="empty-state">
+                  <i class="fas fa-spinner fa-spin empty-icon"></i><p>Loading funnel…</p>
+                </div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommendation + Activity -->
+      <div class="grid-2col mt-5" style="align-items:start">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Status</span></div>
+          <div class="card-body" id="po-rec-body" style="padding-top:0"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Activity Summary</span></div>
+          <div class="card-body" id="po-act-body" style="padding-top:0"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Offers ══════════════════════════════════════════════════════ -->
+    <section id="page-offers" class="page">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Offers</h2>
+          <p class="page-subtitle">Offer performance, publisher breakdown and funnel analysis</p>
+        </div>
+      </div>
+
+      <div class="page-tab-bar">
+        <button class="tab-btn active" data-tab="summary" onclick="switchTab('offers','summary')">Summary</button>
+        <button class="tab-btn"        data-tab="funnel"  onclick="switchTab('offers','funnel')">Offer Funnel</button>
+      </div>
+
+      <!-- Tab: Summary -->
+      <div class="tab-content active" data-tab="summary" id="off-tab-summary">
+        <div class="kpi-grid kpi-grid-4" id="off-kpi-row">
+          <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+          <div class="kpi-skeleton"></div><div class="kpi-skeleton"></div>
+        </div>
+        <div class="grid-2col mt-5">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Top Offers by Revenue</h3>
+                <p class="card-subtitle">Coloured by action status</p>
+              </div>
+              <select id="off-rev-topn" class="card-select" onchange="renderOffersRevenueChart()">
+                <option value="10" selected>Top 10</option>
+                <option value="20">Top 20</option>
+                <option value="30">Top 30</option>
+                <option value="50">Top 50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="card-body">
+              <div id="chart-off-revenue" class="chart-area"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Revenue Distribution</h3>
+                <p class="card-subtitle">Others grouped</p>
+              </div>
+              <select id="off-dist-topn" class="card-select" onchange="renderOffersDistributionChart()">
+                <option value="10" selected>Top 10</option>
+                <option value="20">Top 20</option>
+                <option value="30">Top 30</option>
+                <option value="50">Top 50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="card-body">
+              <div id="chart-off-distribution" class="chart-area"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card mt-5">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">All Offers</h3>
+              <span id="off-table-badge" class="count-badge"></span>
+            </div>
+            <span style="font-size:11.5px;color:var(--txt-muted)">
+              <i class="fas fa-hand-pointer" style="margin-right:4px"></i>Click a row to view funnel
+            </span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Offer Name</th>
+                  <th class="th-num">Revenue</th><th class="th-num">Cost</th>
+                  <th class="th-num">Profit</th><th class="th-num">Margin %</th>
+                  <th class="th-num">Conversions</th>
+                  <th class="th-center">Action</th>
+                  <th class="th-num">Publishers</th>
+                  <th>First Seen</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="off-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Offer Funnel -->
+      <div class="tab-content" data-tab="funnel" id="off-tab-funnel">
+        <div id="funnel-empty" class="funnel-empty-state">
+          <div class="funnel-empty-inner">
+            <div class="funnel-empty-icon"><i class="fas fa-filter"></i></div>
+            <h3 class="funnel-empty-title">Please select an Offer to view the funnel</h3>
+            <p class="funnel-empty-sub">
+              Use the <strong>Offer</strong> filter above to select an offer.
+              The funnel will load automatically.
+            </p>
+            <div class="funnel-hint-row">
+              <span class="funnel-hint"><i class="fas fa-calendar-alt"></i> Respects date range</span>
+              <span class="funnel-hint"><i class="fas fa-handshake"></i> Respects partner filter</span>
+              <span class="funnel-hint"><i class="fas fa-sort-amount-down"></i> Auto-sorted by count</span>
+            </div>
+          </div>
+        </div>
+        <div id="funnel-content" class="d-none">
+          <div class="kpi-grid kpi-grid-4" id="funnel-kpi-row"></div>
+          <div id="funnel-main-notice"></div>
+          <div class="card" style="margin-top:20px">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Funnel Steps</h3>
+                <p class="card-subtitle">Detailed breakdown by goal, sorted highest → lowest</p>
+              </div>
+              <span id="funnel-steps-badge" class="count-badge"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="funnel-main-table">
+                <thead>
+                  <tr>
+                    <th class="th-center" style="width:80px">Step</th>
+                    <th>Goal</th>
+                    <th class="th-num">Users</th>
+                    <th class="th-num">Actual %</th>
+                    <th class="th-num">Time To Complete</th>
+                    <th style="min-width:180px;padding-right:20px">Progress</th>
+                  </tr>
+                </thead>
+                <tbody id="funnel-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Health Check ══════════════════════════════════════════════ -->
+    <section id="page-health" class="page">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Health Check</h2>
+          <p class="page-subtitle">Operations Control Center — exceptions, risks, and opportunities</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="health-last-updated" style="font-size:12px;color:var(--txt-muted)"></div>
+          <button class="btn btn-sm btn-outline" onclick="refreshHealthCheck()">
+            <i class="fas fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- ── 1. Executive Summary ── -->
+      <div class="grid-3col" id="health-comparisons-row">
+
+        <div class="card health-period-card" id="hc-today">
+          <div class="card-header" style="padding-bottom:10px">
+            <h3 class="card-title" style="font-size:13px">Today vs Yesterday</h3>
+          </div>
+          <div class="card-body hc-metrics" id="hc-today-body">
+            <div class="hc-loading"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+        <div class="card health-period-card" id="hc-week">
+          <div class="card-header" style="padding-bottom:10px">
+            <div class="card-title-group">
+              <h3 class="card-title" style="font-size:13px">This Week vs Last</h3>
+              <p class="card-subtitle" id="hc-week-label" style="font-size:11px"></p>
+            </div>
+          </div>
+          <div class="card-body hc-metrics" id="hc-week-body">
+            <div class="hc-loading"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+        <div class="card health-period-card" id="hc-mtd">
+          <div class="card-header" style="padding-bottom:10px">
+            <h3 class="card-title" style="font-size:13px">MTD vs Last Month</h3>
+          </div>
+          <div class="card-body hc-metrics" id="hc-mtd-body">
+            <div class="hc-loading"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+      </div><!-- /grid-3col -->
+
+      <!-- ── 2. Today's Action Queue ── -->
+      <div class="card mt-5" id="hc-priorities-card">
+        <div class="card-header card-toolbar">
+          <div class="toolbar-left">
+            <h3 class="card-title">
+              <i class="fas fa-list-check" style="color:#f59e0b;margin-right:6px;font-size:13px"></i>
+              Today's Action Queue
+            </h3>
+            <span class="count-badge" id="hc-priorities-badge">—</span>
+            <button class="hc-info-btn" onclick="showHcInfo('priorities',event)" title="How priorities are selected"><i class="fas fa-circle-info"></i></button>
+          </div>
+          <div class="toolbar-right" style="font-size:12px;color:var(--txt-muted)">Critical → Warning → Opportunity · top 10</div>
+        </div>
+        <div id="hc-priorities-body" style="padding-top:0">
+          <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+        </div>
+      </div>
+
+      <!-- ── 3. Revenue At Risk + Scale Opportunities ── -->
+      <div class="grid-2col mt-5">
+
+        <div class="card" id="hc-risk-card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">
+                <i class="fas fa-circle-exclamation" style="color:var(--red);margin-right:6px;font-size:13px"></i>
+                Revenue At Risk
+              </h3>
+              <span class="count-badge count-badge-red" id="hc-risk-badge">—</span>
+              <button class="hc-info-btn" onclick="showHcInfo('risk',event)" title="How risk is calculated"><i class="fas fa-circle-info"></i></button>
+            </div>
+          </div>
+          <div id="hc-risk-body">
+            <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+        <div class="card" id="hc-scale-card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">
+                <i class="fas fa-rocket" style="color:var(--green);margin-right:6px;font-size:13px"></i>
+                Scale Opportunities
+              </h3>
+              <span class="count-badge count-badge-green" id="hc-scale-badge">—</span>
+              <button class="hc-info-btn" onclick="showHcInfo('scale',event)" title="Scale criteria"><i class="fas fa-circle-info"></i></button>
+            </div>
+          </div>
+          <div id="hc-scale-body">
+            <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+      </div><!-- /grid-2col risk+scale -->
+
+      <!-- ── 4. Publisher Health + Offer Health ── -->
+      <div class="grid-2col mt-5">
+
+        <div class="card" id="hc-pub-health-card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">
+                <i class="fas fa-building" style="color:var(--sky);margin-right:6px;font-size:13px"></i>
+                Publisher Health
+              </h3>
+              <button class="hc-info-btn" onclick="showHcInfo('pub_health',event)" title="Health criteria"><i class="fas fa-circle-info"></i></button>
+            </div>
+          </div>
+          <div id="hc-pub-health-body">
+            <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+        <div class="card" id="hc-off-health-card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">
+                <i class="fas fa-tag" style="color:var(--purple);margin-right:6px;font-size:13px"></i>
+                Offer Health
+              </h3>
+              <button class="hc-info-btn" onclick="showHcInfo('off_health',event)" title="Health criteria"><i class="fas fa-circle-info"></i></button>
+            </div>
+          </div>
+          <div id="hc-off-health-body">
+            <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+          </div>
+        </div>
+
+      </div><!-- /grid-2col health -->
+
+      <!-- ── 5. Funnel Issues ── -->
+      <div class="card mt-5" id="hc-funnel-card">
+        <div class="card-header card-toolbar">
+          <div class="toolbar-left">
+            <h3 class="card-title">
+              <i class="fas fa-filter" style="color:var(--amber);margin-right:6px;font-size:13px"></i>
+              Funnel Issues
+            </h3>
+            <span class="count-badge" id="hc-funnel-badge">—</span>
+            <button class="hc-info-btn" onclick="showHcInfo('funnel',event)" title="Funnel detection rules"><i class="fas fa-circle-info"></i></button>
+          </div>
+          <div class="toolbar-right" style="font-size:12px;color:var(--txt-muted)">Conversion rate deterioration · yesterday vs day before</div>
+        </div>
+        <div id="hc-funnel-body">
+          <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+        </div>
+      </div>
+
+      <!-- ── 6. Anomaly Detection ── -->
+      <div class="card mt-5" id="hc-anomaly-card">
+        <div class="card-header card-toolbar">
+          <div class="toolbar-left">
+            <h3 class="card-title">
+              <i class="fas fa-waveform-lines" style="color:var(--blue);margin-right:6px;font-size:13px"></i>
+              Anomaly Detection
+            </h3>
+            <span class="count-badge" id="hc-anomaly-total-badge">—</span>
+            <button class="hc-info-btn" onclick="showHcInfo('anomaly',event)" title="Anomaly thresholds"><i class="fas fa-circle-info"></i></button>
+          </div>
+          <div class="toolbar-right" style="font-size:12px;color:var(--txt-muted)">Grouped day-over-day signals</div>
+        </div>
+        <div class="card-body" id="hc-anomaly-body" style="padding:16px 20px">
+          <div class="hc-loading" style="padding:24px 0"><i class="fas fa-circle-notch fa-spin"></i></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ PAGE: Analytics ══════════════════════════════════════════════════ -->
+    <section id="page-analytics" class="page">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Performance</h2>
+          <p class="page-subtitle">What changed? Why? Who caused it? Where is the risk?</p>
+        </div>
+      </div>
+
+      <div class="page-tab-bar">
+        <button class="tab-btn active" data-tab="trend"   onclick="switchTab('analytics','trend')">Trend</button>
+        <button class="tab-btn"        data-tab="weekly"  onclick="switchTab('analytics','weekly')">Weekly Analysis</button>
+        <button class="tab-btn"        data-tab="monthly" onclick="switchTab('analytics','monthly')">Monthly Analysis</button>
+      </div>
+
+      <!-- ── Tab: Trend & Drivers ────────────────────────────────────────── -->
+      <div class="tab-content active" data-tab="trend" id="an-tab-trend">
+
+        <!-- Daily Trend Chart -->
+        <div class="card">
+          <div class="card-header card-toolbar" style="flex-wrap:wrap;gap:10px">
+            <div class="card-title-group">
+              <h3 class="card-title">Daily Trend</h3>
+              <p class="card-subtitle">Revenue, profit, and conversions over the selected range</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div id="perf-metric-pills" style="display:flex;gap:10px;flex-wrap:wrap">
+                <label class="metric-pill"><input type="checkbox" value="revenue"    checked onchange="renderAnalyticsTrend()"> Revenue</label>
+                <label class="metric-pill"><input type="checkbox" value="profit"     checked onchange="renderAnalyticsTrend()"> Profit</label>
+                <label class="metric-pill"><input type="checkbox" value="cost"              onchange="renderAnalyticsTrend()"> Cost</label>
+                <label class="metric-pill"><input type="checkbox" value="margin_pct"        onchange="renderAnalyticsTrend()"> Margin %</label>
+                <label class="metric-pill"><input type="checkbox" value="installs"          onchange="renderAnalyticsTrend()"> Conversions</label>
+              </div>
+              <div class="btn-group">
+                <button class="trend-btn active" data-ctype="line" onclick="setPerfChartType(this,'line')"><i class="fas fa-chart-line"></i></button>
+                <button class="trend-btn"        data-ctype="bar"  onclick="setPerfChartType(this,'bar')"><i class="fas fa-chart-bar"></i></button>
+                <button class="trend-btn"        data-ctype="area" onclick="setPerfChartType(this,'area')"><i class="fas fa-chart-area"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="chart-an-trend" class="chart-area chart-xl"></div>
+          </div>
+        </div>
+
+        <!-- Growth Drivers -->
+        <div class="card mt-5" id="an-drivers-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Growth Drivers</h3>
+              <p class="card-subtitle" id="an-drivers-period">This week vs last week — what moved revenue and why</p>
+            </div>
+          </div>
+          <div class="card-body" style="padding-top:0">
+
+            <!-- Publishers row -->
+            <div class="an-drivers-section">
+              <div class="an-drivers-section-label">Publishers</div>
+              <div class="an-drivers-cols">
+                <div class="an-drivers-col an-drivers-gain">
+                  <div class="an-drivers-col-header"><i class="fas fa-arrow-trend-up"></i> Growing</div>
+                  <div id="an-pub-gainers"></div>
+                </div>
+                <div class="an-drivers-col an-drivers-decline">
+                  <div class="an-drivers-col-header"><i class="fas fa-arrow-trend-down"></i> Declining</div>
+                  <div id="an-pub-decliners"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Offers row -->
+            <div class="an-drivers-section" style="margin-top:16px">
+              <div class="an-drivers-section-label">Offers</div>
+              <div class="an-drivers-cols">
+                <div class="an-drivers-col an-drivers-gain">
+                  <div class="an-drivers-col-header"><i class="fas fa-arrow-trend-up"></i> Growing</div>
+                  <div id="an-off-gainers"></div>
+                </div>
+                <div class="an-drivers-col an-drivers-decline">
+                  <div class="an-drivers-col-header"><i class="fas fa-arrow-trend-down"></i> Declining</div>
+                  <div id="an-off-decliners"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Concentration Risk -->
+        <div class="grid-2col mt-5">
+          <div class="card" id="an-conc-offer-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Offer Concentration</h3>
+                <p class="card-subtitle">Revenue dependency — how exposed are you to single offers?</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:8px">
+              <div id="an-conc-offers"></div>
+            </div>
+          </div>
+          <div class="card" id="an-conc-pub-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Publisher Concentration</h3>
+                <p class="card-subtitle">Revenue dependency — how exposed are you to single publishers?</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:8px">
+              <div id="an-conc-pubs"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- New vs Existing Revenue -->
+        <div class="card mt-5" id="an-nve-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">New vs Existing Revenue</h3>
+              <p class="card-subtitle" id="an-nve-period">This week — are we growing from new business or existing?</p>
+            </div>
+          </div>
+          <div class="card-body an-nve-body">
+            <div class="an-nve-col">
+              <div class="an-nve-col-label">Publishers</div>
+              <div id="an-nve-publishers"></div>
+            </div>
+            <div class="an-nve-divider"></div>
+            <div class="an-nve-col">
+              <div class="an-nve-col-label">Offers</div>
+              <div id="an-nve-offers"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /an-tab-trend -->
+
+      <!-- ── Tab: Weekly ─────────────────────────────────────────────────── -->
+      <div class="tab-content" data-tab="weekly" id="an-tab-weekly">
+
+        <!-- Charts row -->
+        <div class="grid-2col">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Weekly Revenue &amp; Profit</h3>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="chart-an-weekly-rev" class="chart-area chart-lg"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Week-over-Week Growth</h3>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="chart-an-weekly-wow" class="chart-area chart-lg"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Winners & Losers (WoW) -->
+        <div class="grid-2col mt-5">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Top Gainers</h3>
+                <p class="card-subtitle" id="an-wl-period">This week vs last week</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:0">
+              <div id="an-wl-gainers"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Top Decliners</h3>
+                <p class="card-subtitle">Biggest WoW revenue drops</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:0">
+              <div id="an-wl-decliners"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Publisher & Offer Contribution -->
+        <div class="grid-2col mt-5">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Publisher Contribution</h3>
+                <p class="card-subtitle">Revenue share this week — click to open profile</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:0">
+              <div id="an-contrib-pubs"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Offer Contribution</h3>
+                <p class="card-subtitle">Revenue share this week — click to open profile</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:0">
+              <div id="an-contrib-offers"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weekly table (simplified) -->
+        <div class="card mt-5">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Weekly Summary</h3>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th class="th-num">Revenue</th>
+                  <th class="th-num">Profit</th>
+                  <th class="th-num">Margin %</th>
+                  <th class="th-num">Conv.</th>
+                  <th class="th-num">WoW Rev.</th>
+                </tr>
+              </thead>
+              <tbody id="an-weekly-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /an-tab-weekly -->
+
+      <!-- ── Tab: Monthly ────────────────────────────────────────────────── -->
+      <div class="tab-content" data-tab="monthly" id="an-tab-monthly">
+
+        <div class="grid-2col">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Monthly Revenue &amp; Profit</h3>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="chart-an-monthly-rev" class="chart-area chart-lg"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <h3 class="card-title">Month-over-Month Growth</h3>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="chart-an-monthly-mom" class="chart-area chart-lg"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monthly table (simplified) -->
+        <div class="card mt-5">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Monthly Summary</h3>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th class="th-num">Revenue</th>
+                  <th class="th-num">Profit</th>
+                  <th class="th-num">Margin %</th>
+                  <th class="th-num">Conv.</th>
+                  <th class="th-num">MoM Rev.</th>
+                </tr>
+              </thead>
+              <tbody id="an-monthly-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /an-tab-monthly -->
+
+    </section>
+
+    <!-- ══ PAGE: Administration ════════════════════════════════════════════ -->
+    <section id="page-administration" class="page">
+
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">Administration</h2>
+          <p class="page-subtitle">Sync data, configure publishers, and manage clients</p>
+        </div>
+      </div>
+
+      <div class="page-tab-bar">
+        <button class="tab-btn active" data-tab="sync"       onclick="switchTab('administration','sync')">Sync</button>
+        <button class="tab-btn"        data-tab="publishers" onclick="switchTab('administration','publishers')">Publishers</button>
+        <button class="tab-btn"        data-tab="games"      onclick="switchTab('administration','games')">Game Configurations</button>
+        <button class="tab-btn"        data-tab="clients"    onclick="switchTab('administration','clients')">Clients</button>
+      </div>
+
+      <!-- ── Tab: Sync ── -->
+      <div class="tab-content active" data-tab="sync" id="adm-tab-sync">
+
+        <!-- Sync controls -->
+        <div class="mgmt-form-card">
+          <div class="mgmt-form-title"><i class="fas fa-arrows-rotate" style="color:var(--primary)"></i> Sync Data</div>
+          <div class="mgmt-form-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+            <div class="mgmt-field">
+              <label>From Date</label>
+              <input type="date" id="sync-from-date">
+            </div>
+            <div class="mgmt-field">
+              <label>To Date</label>
+              <input type="date" id="sync-to-date">
+            </div>
+          </div>
+          <div class="mgmt-actions">
+            <button class="btn-primary" id="btn-start-sync" onclick="startSync()">
+              <i class="fas fa-play"></i> Start Sync
+            </button>
+            <button class="btn-danger" id="btn-clear-db" onclick="clearDatabase()">
+              <i class="fas fa-trash"></i> Clear Database
+            </button>
+          </div>
+        </div>
+
+        <!-- Configured publishers preview -->
+        <div class="card" id="sync-publishers-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Configured Publishers</h3>
+              <p class="card-subtitle">Only these publisher IDs will be fetched during sync</p>
+            </div>
+            <span id="sync-pub-count" class="count-badge">—</span>
+          </div>
+          <div class="card-body" style="padding-top:8px">
+            <div id="sync-pub-list" class="pub-preview-list">
+              <span style="color:var(--txt-muted);font-size:13px">Loading…</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress + log -->
+        <div class="card mt-5" id="sync-progress-card" style="display:none">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title" id="sync-progress-title">Syncing…</h3>
+              <p class="card-subtitle" id="sync-progress-sub"></p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="sync-progress-bar-wrap">
+              <div class="sync-progress-bar" id="sync-progress-fill"></div>
+            </div>
+            <div class="sync-log" id="sync-log"></div>
+          </div>
+        </div>
+
+        <!-- Sync summary (shown after completion) -->
+        <div class="card mt-5" id="sync-summary-card" style="display:none">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title" id="sync-summary-title" style="color:var(--green)">
+                <i class="fas fa-circle-check" style="margin-right:6px"></i>Sync Complete
+              </h3>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="kpi-grid kpi-grid-4" id="sync-summary-kpis" style="margin-bottom:16px"></div>
+            <table class="data-table" style="max-width:600px">
+              <tbody id="sync-summary-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Tab: Publishers ── -->
+      <div class="tab-content" data-tab="publishers" id="adm-tab-publishers">
+
+        <!-- Add / Edit form (ID + Name only — sync source of truth) -->
+        <div class="mgmt-form-card" id="pub-form-card">
+          <div class="mgmt-form-title" id="pub-form-title">
+            <i class="fas fa-plus-circle" style="color:var(--primary)"></i> Add Publisher
+          </div>
+          <p class="pub-section-note">Publishers control which IDs are synced. Game configuration is managed in the Game Configurations tab.</p>
+          <input type="hidden" id="pub-edit-id">
+          <div class="mgmt-form-grid">
+            <div class="mgmt-field">
+              <label>Publisher ID <span style="color:var(--red)">*</span></label>
+              <input type="text" id="pub-f-publisher_id" placeholder="e.g. 1081">
+            </div>
+            <div class="mgmt-field">
+              <label>Partner Name <span style="color:var(--red)">*</span></label>
+              <input type="text" id="pub-f-partner_name" placeholder="e.g. Elite Media">
+            </div>
+          </div>
+          <div class="mgmt-actions">
+            <button class="btn-primary" onclick="savePub()">
+              <i class="fas fa-save"></i> <span id="pub-save-label">Add Publisher</span>
+            </button>
+            <button class="btn-ghost" id="pub-cancel-btn" onclick="cancelPubEdit()" style="display:none">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Publishers table -->
+        <div class="card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">Publishers</h3>
+              <span id="pub-table-count" class="count-badge">0</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:120px">Publisher ID</th>
+                  <th>Partner Name</th>
+                  <th class="th-center" style="width:120px">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="pub-list-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Tab: Game Configurations ── -->
+      <div class="tab-content" data-tab="games" id="adm-tab-games">
+
+        <!-- Status cards row -->
+        <div class="gc-status-row" id="gc-status-row">
+          <div class="gc-stat-card" data-filter="all"         onclick="_gcSetFilter('all')">
+            <div class="gc-stat-val" id="gcs-discovered">—</div>
+            <div class="gc-stat-lbl">Discovered Games</div>
+          </div>
+          <div class="gc-stat-card gc-stat-card--ok" data-filter="configured" onclick="_gcSetFilter('configured')">
+            <div class="gc-stat-val" id="gcs-configured">—</div>
+            <div class="gc-stat-lbl">Configured</div>
+          </div>
+          <div class="gc-stat-card gc-stat-card--warn" data-filter="pending" onclick="_gcSetFilter('pending')">
+            <div class="gc-stat-val" id="gcs-pending">—</div>
+            <div class="gc-stat-lbl">Pending Config</div>
+          </div>
+          <div class="gc-stat-card gc-stat-card--warn" data-filter="missing_kpi" onclick="_gcSetFilter('missing_kpi')">
+            <div class="gc-stat-val" id="gcs-mkpi">—</div>
+            <div class="gc-stat-lbl">Missing KPI</div>
+          </div>
+          <div class="gc-stat-card gc-stat-card--warn" data-filter="missing_funnel" onclick="_gcSetFilter('missing_funnel')">
+            <div class="gc-stat-val" id="gcs-mfunnel">—</div>
+            <div class="gc-stat-lbl">Missing Funnel</div>
+          </div>
+          <div class="gc-stat-card gc-stat-card--warn" data-filter="missing_margin" onclick="_gcSetFilter('missing_margin')">
+            <div class="gc-stat-val" id="gcs-mmargin">—</div>
+            <div class="gc-stat-lbl">Missing Margin</div>
+          </div>
+          <div class="gc-stat-card" data-filter="publishers" onclick="switchTab('administration','publishers')">
+            <div class="gc-stat-val" id="gcs-publishers">—</div>
+            <div class="gc-stat-lbl">Publishers</div>
+          </div>
+        </div>
+
+        <!-- Alert: unconfigured games -->
+        <div class="gc-alert" id="gc-alert" style="display:none">
+          <i class="fas fa-triangle-exclamation"></i>
+          <span id="gc-alert-text"></span>
+        </div>
+
+        <!-- Add / Edit form -->
+        <div class="mgmt-form-card" id="gc-form-card">
+          <div class="mgmt-form-title" id="gc-form-title">
+            <i class="fas fa-gamepad" style="color:var(--primary)"></i> Configure Game
+          </div>
+          <input type="hidden" id="gc-edit-id">
+
+          <!-- Game Info Banner (shown when editing an existing game) -->
+          <div class="gc-game-info-banner" id="gc-game-info-banner" style="display:none">
+            <span id="gc-banner-name"></span>
+            <span class="gc-banner-id" id="gc-banner-id"></span>
+          </div>
+
+          <!-- 1. Game Identity (read-only when editing) -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">1</span>
+              <span class="pub-section-lbl">Game Identity</span>
+            </div>
+            <div class="mgmt-form-grid">
+              <div class="mgmt-field">
+                <label>Offer Name <span style="color:var(--red)">*</span></label>
+                <input type="text" id="gc-f-offer_name" placeholder="Auto-filled from selection">
+              </div>
+              <div class="mgmt-field">
+                <label>Offer ID <span style="color:var(--red)">*</span></label>
+                <input type="text" id="gc-f-offer_id" placeholder="e.g. 10329293">
+              </div>
+            </div>
+            <!-- Discovered games picker -->
+            <div class="mgmt-field" id="gc-picker-field">
+              <label>Select from discovered games</label>
+              <select id="gc-offer-picker" onchange="_gcPickOffer(this.value)">
+                <option value="">— pick a game to configure —</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2. Monetization -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">2</span>
+              <span class="pub-section-lbl">Monetization</span>
+            </div>
+            <div class="mgmt-field pub-game-type-field">
+              <label>Game Type <span style="color:var(--red)">*</span></label>
+              <select id="gc-f-game_type" onchange="_gcGameTypeChange(this.value)">
+                <option value="">— Select —</option>
+                <option value="CPI">CPI</option>
+                <option value="CPE">CPE</option>
+              </select>
+            </div>
+            <div class="pub-mono-split">
+              <div class="pub-mono-col">
+                <div class="pub-col-label">
+                  Payable Goals
+                  <span class="pub-col-hint">One goal per row</span>
+                </div>
+                <div id="gc-goals-list"></div>
+                <button class="pub-add-btn" onclick="_gcGoalAdd()">
+                  <i class="fas fa-plus"></i> Add Goal
+                </button>
+              </div>
+              <div class="pub-mono-col">
+                <div class="pub-col-label">
+                  Bid Structure
+                  <span class="pub-col-hint">Auto-linked to goals above</span>
+                </div>
+                <div id="gc-bid-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Publisher KPI -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">3</span>
+              <span class="pub-section-lbl">Publisher KPI</span>
+            </div>
+            <div class="pub-kpi-groups">
+              <div class="pub-kpi-group">
+                <div class="pub-kpi-group-title">
+                  <i class="fas fa-repeat" style="font-size:10px;margin-right:5px"></i> Retention
+                </div>
+                <div id="gc-pub-kpi-retention"></div>
+                <button class="pub-add-btn pub-add-btn-sm" onclick="_gcKpiAdd('pub','retention')">
+                  <i class="fas fa-plus"></i> Add D<sub>n</sub>
+                </button>
+              </div>
+              <div class="pub-kpi-group">
+                <div class="pub-kpi-group-title">
+                  <i class="fas fa-chart-line" style="font-size:10px;margin-right:5px"></i> ROAS
+                </div>
+                <div id="gc-pub-kpi-roas"></div>
+                <button class="pub-add-btn pub-add-btn-sm" onclick="_gcKpiAdd('pub','roas')">
+                  <i class="fas fa-plus"></i> Add D<sub>n</sub>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Client KPI -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">4</span>
+              <span class="pub-section-lbl">Client KPI</span>
+            </div>
+            <div class="pub-kpi-groups">
+              <div class="pub-kpi-group">
+                <div class="pub-kpi-group-title">
+                  <i class="fas fa-repeat" style="font-size:10px;margin-right:5px"></i> Retention
+                </div>
+                <div id="gc-client-kpi-retention"></div>
+                <button class="pub-add-btn pub-add-btn-sm" onclick="_gcKpiAdd('client','retention')">
+                  <i class="fas fa-plus"></i> Add D<sub>n</sub>
+                </button>
+              </div>
+              <div class="pub-kpi-group">
+                <div class="pub-kpi-group-title">
+                  <i class="fas fa-chart-line" style="font-size:10px;margin-right:5px"></i> ROAS
+                </div>
+                <div id="gc-client-kpi-roas"></div>
+                <button class="pub-add-btn pub-add-btn-sm" onclick="_gcKpiAdd('client','roas')">
+                  <i class="fas fa-plus"></i> Add D<sub>n</sub>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Expected Funnel -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">5</span>
+              <span class="pub-section-lbl">Expected Funnel</span>
+            </div>
+            <div class="pub-funnel-header">
+              <span class="pub-funnel-col-lbl">Goal</span>
+              <span class="pub-funnel-col-lbl pub-funnel-col-num">Expected %</span>
+              <span class="pub-funnel-col-lbl pub-funnel-col-num" style="width:130px">Time</span>
+              <span style="width:26px"></span>
+            </div>
+            <div id="gc-funnel-list"></div>
+            <button class="pub-add-btn" onclick="_gcFunnelAdd()">
+              <i class="fas fa-plus"></i> Add Step
+            </button>
+          </div>
+
+          <!-- 6. Performance Target -->
+          <div class="pub-section">
+            <div class="pub-section-hdr">
+              <span class="pub-section-num">6</span>
+              <span class="pub-section-lbl">Performance Target</span>
+            </div>
+            <div class="mgmt-field pub-margin-field">
+              <label>Expected Margin %</label>
+              <input type="number" id="gc-f-expected_margin" placeholder="30" step="0.1" min="0" max="100">
+            </div>
+          </div>
+
+          <div class="mgmt-actions">
+            <button class="btn-primary" onclick="saveGameConfig()">
+              <i class="fas fa-save"></i> <span id="gc-save-label">Save Configuration</span>
+            </button>
+            <button class="btn-ghost" id="gc-cancel-btn" onclick="cancelGameEdit()" style="display:none">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Games table -->
+        <div class="card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">Game Configurations</h3>
+              <span id="gc-table-count" class="count-badge">0</span>
+            </div>
+            <div class="toolbar-right">
+              <span class="gc-filter-label" id="gc-filter-label"></span>
+              <button class="btn-ghost btn-xs" id="gc-clear-filter-btn" onclick="_gcSetFilter('all')" style="display:none">
+                <i class="fas fa-xmark"></i> Clear filter
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table gc-table">
+              <thead>
+                <tr>
+                  <th style="width:200px">Game / Offer</th>
+                  <th style="width:50px">Type</th>
+                  <th>Configuration</th>
+                  <th class="th-center" style="width:120px">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="gc-list-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── Unconfigured Games ── -->
+        <div class="card uc-games-card" id="uc-games-card" style="display:none">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <i class="fas fa-triangle-exclamation uc-warn-icon"></i>
+              <h3 class="card-title">Unconfigured Games</h3>
+              <span id="uc-games-count" class="count-badge count-badge--warn">0</span>
+            </div>
+            <div class="toolbar-right">
+              <span class="uc-games-subtitle">These offers exist in Sapphyre but are hidden from the dashboard. Configure them to make them visible.</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table uc-games-table">
+              <thead>
+                <tr>
+                  <th>Offer Name</th>
+                  <th style="width:130px">Offer ID</th>
+                  <th>Publishers</th>
+                  <th style="width:70px">Type</th>
+                  <th class="th-center" style="width:120px">Action</th>
+                </tr>
+              </thead>
+              <tbody id="uc-games-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Tab: Clients ── -->
+      <div class="tab-content" data-tab="clients" id="adm-tab-clients">
+
+        <!-- Add / Edit form -->
+        <div class="mgmt-form-card" id="client-form-card">
+          <div class="mgmt-form-title" id="client-form-title">
+            <i class="fas fa-plus-circle" style="color:var(--primary)"></i> Add Client
+          </div>
+          <input type="hidden" id="client-edit-id">
+          <div class="mgmt-form-grid">
+            <div class="mgmt-field">
+              <label>Client Name <span style="color:var(--red)">*</span></label>
+              <input type="text" id="client-f-client_name" placeholder="e.g. Acme Corp">
+            </div>
+            <div class="mgmt-field">
+              <label>Games (comma separated)</label>
+              <input type="text" id="client-f-games" placeholder="Game A, Game B">
+            </div>
+            <div class="mgmt-field">
+              <label>Bid ($)</label>
+              <input type="number" id="client-f-bid" placeholder="0.50" step="0.01">
+            </div>
+            <div class="mgmt-field">
+              <label>KPI</label>
+              <input type="text" id="client-f-kpi" placeholder="e.g. Conversion">
+            </div>
+            <div class="mgmt-field" style="grid-column: span 2">
+              <label>Notes</label>
+              <input type="text" id="client-f-notes" placeholder="Optional notes">
+            </div>
+          </div>
+          <div class="mgmt-actions">
+            <button class="btn-primary" onclick="saveClient()">
+              <i class="fas fa-save"></i> <span id="client-save-label">Add Client</span>
+            </button>
+            <button class="btn-ghost" id="client-cancel-btn" onclick="cancelClientEdit()" style="display:none">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Clients table -->
+        <div class="card">
+          <div class="card-header card-toolbar">
+            <div class="toolbar-left">
+              <h3 class="card-title">Clients</h3>
+              <span id="client-table-count" class="count-badge">0</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Client Name</th>
+                  <th>Games</th>
+                  <th class="th-num">Bid</th>
+                  <th>KPI</th>
+                  <th>Notes</th>
+                  <th class="th-center" style="width:120px">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="client-list-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+</div><!-- .shell -->
+
+<!-- ══ SLIDE PANEL ══════════════════════════════════════════════════ -->
+<div id="slide-panel-overlay" class="sp-overlay" onclick="closeSlidePanel()"></div>
+<div id="slide-panel" class="slide-panel">
+  <div class="sp-header">
+    <div class="sp-header-left">
+      <span class="sp-title" id="sp-title">Detail</span>
+      <span class="sp-subtitle" id="sp-subtitle"></span>
+    </div>
+    <button class="sp-close" onclick="closeSlidePanel()"><i class="fas fa-xmark"></i></button>
+  </div>
+  <div class="sp-tab-bar" id="sp-tab-bar"></div>
+  <div class="sp-body" id="sp-body">
+    <div style="text-align:center;padding:64px;color:var(--txt-muted)">
+      <i class="fas fa-circle-notch fa-spin" style="font-size:28px"></i>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Publisher List (Total Publishers card) ═══════════════ -->
+<div id="modal-pub-list" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)closePubListModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-pub-list-title">All Publishers</span>
+      <button class="modal-close" onclick="closePubListModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-pub-list-body"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Publisher Status (Status card) ═════════════════════════ -->
+<div id="modal-pub-status" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)closePubStatusModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Publisher Status</span>
+      <button class="modal-close" onclick="closePubStatusModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-pub-status-body"></div>
+  </div>
+</div>
+
+<div id="loading-bar" class="loading-bar"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
