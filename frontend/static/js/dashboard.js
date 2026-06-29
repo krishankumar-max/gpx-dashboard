@@ -100,8 +100,142 @@ function qs(extra={}) {
   return p.toString();
 }
 
+// ── Supabase Auth ─────────────────────────────────────────────────────────────
+// Config injected by Flask into <body> data-supabase-url / data-supabase-key.
+// When both are absent the entire auth layer is bypassed (local dev mode).
+
+const _supabaseUrl = document.body.dataset.supabaseUrl || '';
+const _supabaseKey = document.body.dataset.supabaseKey || '';
+const _sbClient    = (_supabaseUrl && _supabaseKey && window.supabase)
+  ? window.supabase.createClient(_supabaseUrl, _supabaseKey, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    })
+  : null;
+
+let _authSession = null;   // current Supabase session (access_token + user)
+let _dashReady   = false;  // prevent double-boot of init()
+
+function _showLoginOverlay() {
+  const ov = document.getElementById('auth-overlay');
+  if (ov) ov.style.display = 'flex';
+}
+
+function _hideLoginOverlay() {
+  const ov = document.getElementById('auth-overlay');
+  if (ov) ov.style.display = 'none';
+}
+
+function _setAuthUserLabel(user) {
+  const el  = document.getElementById('auth-user-email');
+  const row = document.getElementById('auth-user-row');
+  if (el)  el.textContent = user?.email || '';
+  if (row) row.style.display = user ? 'flex' : 'none';
+}
+
+async function _initAuth() {
+  if (!_sbClient) {
+    // Dev mode: Supabase not configured — boot dashboard directly.
+    _hideLoginOverlay();
+    await init();
+    return;
+  }
+
+  // Try to restore a persisted session from localStorage.
+  const { data: { session } } = await _sbClient.auth.getSession();
+  if (session) {
+    _authSession = session;
+    _setAuthUserLabel(session.user);
+    _hideLoginOverlay();
+    if (!_dashReady) { _dashReady = true; await init(); }
+  } else {
+    _showLoginOverlay();
+  }
+
+  // Keep session in sync: SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED …
+  _sbClient.auth.onAuthStateChange(async (event, session) => {
+    _authSession = session;
+    if (session) {
+      _setAuthUserLabel(session.user);
+      _hideLoginOverlay();
+      if (!_dashReady) { _dashReady = true; await init(); }
+    } else {
+      _dashReady = false;
+      _setAuthUserLabel(null);
+      _showLoginOverlay();
+    }
+  });
+}
+
+async function authLogin() {
+  if (!_sbClient) return;
+  const email    = (document.getElementById('auth-email')?.value || '').trim();
+  const password = document.getElementById('auth-password')?.value || '';
+  const errEl    = document.getElementById('auth-error');
+  const btn      = document.getElementById('auth-submit');
+
+  if (!email || !password) {
+    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = 'Email and password are required.'; errEl.style.display = 'block'; }
+    return;
+  }
+  if (btn)   { btn.disabled = true; btn.textContent = 'Signing in…'; }
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+  const { error } = await _sbClient.auth.signInWithPassword({ email, password });
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+  if (error) {
+    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message || 'Login failed. Check your credentials.'; errEl.style.display = 'block'; }
+  }
+  // On success: onAuthStateChange fires automatically and boots the dashboard.
+}
+
+async function authResetPassword() {
+  if (!_sbClient) return;
+  const email = (document.getElementById('auth-email')?.value || '').trim();
+  const errEl = document.getElementById('auth-error');
+  if (!email) {
+    if (errEl) { errEl.className = 'auth-msg auth-error'; errEl.textContent = 'Enter your email address first.'; errEl.style.display = 'block'; }
+    return;
+  }
+  const { error } = await _sbClient.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/',
+  });
+  if (errEl) {
+    if (error) {
+      errEl.className = 'auth-msg auth-error'; errEl.textContent = error.message; errEl.style.display = 'block';
+    } else {
+      errEl.className = 'auth-msg auth-success'; errEl.textContent = 'Password reset email sent — check your inbox.'; errEl.style.display = 'block';
+    }
+  }
+}
+
+async function authLogout() {
+  if (_sbClient) await _sbClient.auth.signOut();
+  _authSession = null;
+  _dashReady   = false;
+  _setAuthUserLabel(null);
+  _showLoginOverlay();
+}
+
+// ── Auth-aware fetch ──────────────────────────────────────────────────────────
+
+async function authFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (_authSession?.access_token) {
+    headers['Authorization'] = `Bearer ${_authSession.access_token}`;
+  }
+  const r = await fetch(url, { ...options, headers });
+  if (r.status === 401) {
+    // Token expired or revoked — force re-login.
+    _authSession = null;
+    _showLoginOverlay();
+    throw new Error('Session expired. Please log in again.');
+  }
+  return r;
+}
+
 async function api(url) {
-  const r = await fetch(url);
+  const r = await authFetch(url);
   if (!r.ok) throw new Error(`${url} → ${r.status}`);
   return r.json();
 }
@@ -3734,7 +3868,7 @@ async function startSync() {
   const btn = document.getElementById('btn-start-sync');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Starting…'; }
 
-  const r = await fetch('/api/sync/start', {
+  const r = await authFetch('/api/sync/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_date: from, to_date: to }),
@@ -3893,7 +4027,7 @@ async function clearDatabase() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Clearing…'; }
 
   try {
-    const r    = await fetch('/api/sync/clear', {
+    const r    = await authFetch('/api/sync/clear', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'DELETE' }),
@@ -3968,7 +4102,7 @@ async function savePub() {
   const payload = { publisher_id, partner_name, enabled };
   const url     = editId ? `/api/management/publishers/${editId}` : '/api/management/publishers';
   const method  = editId ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
   cancelPubEdit();
   _loaded.delete('administration:publishers');
@@ -3995,7 +4129,7 @@ async function editPub(id) {
 // Quick toggle without opening the edit form.
 // Sends a partial PUT — all other fields default to their stored values in the service.
 async function togglePubEnabled(id, currentEnabled) {
-  const r = await fetch(`/api/management/publishers/${id}`, {
+  const r = await authFetch(`/api/management/publishers/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled: !currentEnabled }),
@@ -4007,7 +4141,7 @@ async function togglePubEnabled(id, currentEnabled) {
 
 async function deletePub(id) {
   if (!confirm('Delete this publisher? This will NOT delete their game configurations.')) return;
-  await fetch(`/api/management/publishers/${id}`, { method:'DELETE' });
+  await authFetch(`/api/management/publishers/${id}`, { method:'DELETE' });
   _loaded.delete('administration:publishers');
   await loadPubList();
 }
@@ -4479,7 +4613,7 @@ async function saveGameConfig() {
 
   const url    = editId ? `/api/admin/games/${editId}` : '/api/admin/games';
   const method = editId ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
   cancelGameEdit();
   _loaded.delete('administration:games');
@@ -4540,7 +4674,7 @@ async function editGameConfig(id) {
 
 async function deleteGameConfig(id) {
   if (!confirm('Delete this game configuration?')) return;
-  await fetch(`/api/admin/games/${id}`, { method:'DELETE' });
+  await authFetch(`/api/admin/games/${id}`, { method:'DELETE' });
   _loaded.delete('administration:games');
   await loadGamesList();
 }
@@ -4595,7 +4729,7 @@ async function saveClient() {
 
   const url    = editId ? `/api/management/clients/${editId}` : '/api/management/clients';
   const method = editId ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
   cancelClientEdit();
   _loaded.delete('administration:clients');
@@ -4616,7 +4750,7 @@ async function editClient(id) {
 
 async function deleteClient(id) {
   if (!confirm('Delete this client?')) return;
-  await fetch(`/api/management/clients/${id}`, { method:'DELETE' });
+  await authFetch(`/api/management/clients/${id}`, { method:'DELETE' });
   _loaded.delete('administration:clients');
   await loadClientList();
 }
@@ -4629,7 +4763,7 @@ function cancelClientEdit() {
   document.getElementById('client-cancel-btn').style.display = 'none';
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', _initAuth);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (document.getElementById('slide-panel')?.classList.contains('open')) closeSlidePanel();

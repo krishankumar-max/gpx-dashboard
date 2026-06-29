@@ -11,6 +11,78 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.min.css" rel="stylesheet">
   <link href="/static/css/style.css" rel="stylesheet">
+
+  <style>
+    /* ── Auth Overlay ─────────────────────────────────────────────────────── */
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg-app, #f1f5f9);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-card {
+      background: var(--bg-card, #ffffff);
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 12px;
+      padding: 36px 32px;
+      width: 100%; max-width: 380px;
+      display: flex; flex-direction: column; gap: 16px;
+      box-shadow: 0 4px 24px rgba(15,23,42,.08);
+    }
+    .auth-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .auth-logo-img { width: 36px; height: 36px; object-fit: contain; border-radius: 8px; }
+    .auth-logo-text { display: flex; flex-direction: column; }
+    .auth-product { font-size: 15px; font-weight: 700; color: var(--txt-head, #0f172a); line-height: 1.2; }
+    .auth-tagline { font-size: 11px; color: var(--txt-muted, #94a3b8); }
+    .auth-title { font-size: 20px; font-weight: 600; color: var(--txt-head, #0f172a); margin: 4px 0 0; }
+    .auth-field { display: flex; flex-direction: column; gap: 6px; }
+    .auth-label { font-size: 12px; font-weight: 500; color: var(--txt-label, #64748b); }
+    .auth-input {
+      background: var(--bg-input, #f8fafc);
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 6px;
+      color: var(--txt-body, #334155);
+      font-size: 14px; font-family: inherit;
+      padding: 9px 12px; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .auth-input:focus { border-color: var(--primary, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .auth-btn {
+      background: var(--primary, #3b82f6); color: #fff;
+      border: none; border-radius: 6px;
+      padding: 10px 0; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit; margin-top: 4px;
+      transition: background .15s;
+    }
+    .auth-btn:hover:not(:disabled) { background: var(--primary-dk, #2563eb); }
+    .auth-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .auth-link-btn {
+      background: none; border: none;
+      color: var(--primary, #3b82f6);
+      font-size: 12px; cursor: pointer; padding: 0;
+      text-align: center; font-family: inherit;
+    }
+    .auth-link-btn:hover { text-decoration: underline; }
+    .auth-msg { font-size: 12px; margin: 0; display: none; }
+    .auth-error  { color: #ef4444; }
+    .auth-success { color: #22c55e; }
+
+    /* ── Sidebar: user row + logout ───────────────────────────────────────── */
+    .sb-user-row {
+      align-items: center; justify-content: space-between;
+      padding: 7px 0; border-top: 1px solid var(--sb-border, rgba(255,255,255,.1));
+      margin-top: 4px; gap: 6px;
+    }
+    .sb-user-email {
+      font-size: 10px; color: var(--sb-txt-dim, rgba(255,255,255,.35));
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    }
+    .sb-logout-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--sb-txt, rgba(255,255,255,.65));
+      padding: 3px 6px; border-radius: 4px; font-size: 12px; flex-shrink: 0;
+    }
+    .sb-logout-btn:hover { color: #fff; background: rgba(239,68,68,.25); }
+  </style>
 </head>
 
 <body
@@ -18,6 +90,8 @@
   data-default-to="{{ default_to }}"
   data-min-date="{{ min_date }}"
   data-max-date="{{ max_date }}"
+  data-supabase-url="{{ supabase_url }}"
+  data-supabase-key="{{ supabase_key }}"
 >
 
 <!-- ══ Sidebar ═══════════════════════════════════════════════════════════════ -->
@@ -100,7 +174,7 @@
 
   </nav>
 
-  <!-- Footer: sync status -->
+  <!-- Footer: sync status + user/logout -->
   <div class="sb-footer">
     <div class="sb-status-row">
       <span class="sb-status-dot" id="sb-dot"></span>
@@ -108,6 +182,12 @@
         <span class="sb-status-text" id="sb-status-text">Connecting…</span>
         <span class="sb-status-sub" id="sb-status-sub"></span>
       </div>
+    </div>
+    <div id="auth-user-row" class="sb-user-row" style="display:none">
+      <span id="auth-user-email" class="sb-user-email sb-label"></span>
+      <button class="sb-logout-btn" onclick="authLogout()" title="Sign out">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
     </div>
   </div>
 
@@ -2009,8 +2089,38 @@
   </div>
 </div>
 
+<!-- ══ AUTH: Login overlay ══════════════════════════════════════════════════ -->
+<!-- Shown when Supabase is configured and no session exists.               -->
+<!-- JS (_initAuth) hides it immediately in dev mode (no SUPABASE_URL).    -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <img src="/static/favicon.png" alt="GPX" class="auth-logo-img">
+      <div class="auth-logo-text">
+        <span class="auth-product">Game Perfomix</span>
+        <span class="auth-tagline">Analytics</span>
+      </div>
+    </div>
+    <h2 class="auth-title">Sign in</h2>
+    <div class="auth-field">
+      <label class="auth-label" for="auth-email">Email</label>
+      <input id="auth-email" type="email" class="auth-input" placeholder="you@company.com"
+             onkeydown="if(event.key==='Enter')document.getElementById('auth-password').focus()">
+    </div>
+    <div class="auth-field">
+      <label class="auth-label" for="auth-password">Password</label>
+      <input id="auth-password" type="password" class="auth-input" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter')authLogin()">
+    </div>
+    <p id="auth-error" class="auth-msg"></p>
+    <button id="auth-submit" class="auth-btn" onclick="authLogin()">Sign in</button>
+    <button class="auth-link-btn" onclick="authResetPassword()">Forgot password?</button>
+  </div>
+</div>
+
 <div id="loading-bar" class="loading-bar"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 <script src="/static/js/dashboard.js"></script>
