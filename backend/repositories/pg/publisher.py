@@ -139,19 +139,22 @@ class PgPublisherRepository(PublisherRepository):
         partner_ids: list[int] = []
         partner_names: dict[str, str] = {}
         with get_session() as session:
+            # Project only the two columns needed — returns plain Row namedtuples,
+            # not ORM instances, so they remain usable after the session closes.
+            # All processing is done inside the block as an extra safeguard.
             rows = (
-                session.query(PublisherORM)
-                .filter(PublisherORM.enabled == True)  # noqa: E712
+                session.query(PublisherORM.publisher_id, PublisherORM.partner_name)
+                .filter(PublisherORM.enabled.is_(True))
                 .order_by(PublisherORM.publisher_id)
                 .all()
             )
-        for row in rows:
-            pid_str = str(row.publisher_id).strip()
-            try:
-                partner_ids.append(int(pid_str))
-                partner_names[pid_str] = str(row.partner_name or "Unknown").strip()
-            except ValueError:
-                logger.warning(
-                    f"PgPublisherRepository: non-numeric publisher_id {pid_str!r} skipped."
-                )
+            for row in rows:
+                pid_str = str(row.publisher_id).strip()
+                try:
+                    partner_ids.append(int(pid_str))
+                    partner_names[pid_str] = str(row.partner_name or "Unknown").strip()
+                except ValueError:
+                    logger.warning(
+                        f"PgPublisherRepository: non-numeric publisher_id {pid_str!r} skipped."
+                    )
         return partner_ids, partner_names
