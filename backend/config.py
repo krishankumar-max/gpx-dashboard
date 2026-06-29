@@ -77,6 +77,7 @@ AGG_VALUE_COLS: list[str] = ["revenue", "payout", "conversions", "valid_conversi
 # ── HTTP client settings ──────────────────────────────────────────────────────
 HTTP_TIMEOUT_SECONDS: int = 60
 HTTP_MAX_RETRIES: int = int(os.getenv("HTTP_MAX_RETRIES", "10"))  # per-page retry ceiling
+API_MAX_PAGE_SIZE: int = 500  # Sapphyre hard-caps every response at 500 rows regardless of limit=
 HTTP_RETRY_WAIT_MIN: float = 1.0
 HTTP_RETRY_WAIT_MAX: float = 30.0
 

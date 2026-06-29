@@ -37,6 +37,7 @@ from backend.config import (
     SYNC_PAGE_SIZE,
     HTTP_TIMEOUT_SECONDS,
     HTTP_MAX_RETRIES,
+    API_MAX_PAGE_SIZE,
     KEEP_COLS,
 )
 
@@ -48,6 +49,15 @@ _BACKOFF_BASE: float = 2.0      # seconds for first retry
 _BACKOFF_STEP: float = 2.0      # added on each subsequent retry
 _BACKOFF_MAX: float = 30.0      # ceiling
 _MAX_RETRIES: int = HTTP_MAX_RETRIES
+
+# Clamp SYNC_PAGE_SIZE to the API's hard cap. Both the limit= param and the skip
+# increment must use the same value, otherwise pages are silently skipped.
+if SYNC_PAGE_SIZE > API_MAX_PAGE_SIZE:
+    logger.warning(
+        f"SYNC_PAGE_SIZE={SYNC_PAGE_SIZE} exceeds API_MAX_PAGE_SIZE={API_MAX_PAGE_SIZE}. "
+        f"Clamping to {API_MAX_PAGE_SIZE}. Update SYNC_PAGE_SIZE in your .env to suppress this."
+    )
+_EFFECTIVE_PAGE_SIZE: int = min(SYNC_PAGE_SIZE, API_MAX_PAGE_SIZE)
 
 
 class PageFetchFailed(Exception):
@@ -151,7 +161,7 @@ def _fetch_page(
 
     Returns the filtered rows for this page.
     """
-    params = _build_params(date, skip=skip, limit=SYNC_PAGE_SIZE, partner_ids=partner_ids)
+    params = _build_params(date, skip=skip, limit=_EFFECTIVE_PAGE_SIZE, partner_ids=partner_ids)
     wait = _BACKOFF_BASE
     last_exc: Exception | None = None
     last_status: int | None = None
@@ -323,7 +333,7 @@ def fetch_day_sync(
         return []
 
     # ── Step 2: compute page offsets ──────────────────────────────────────────
-    offsets = list(range(0, total, SYNC_PAGE_SIZE))
+    offsets = list(range(0, total, _EFFECTIVE_PAGE_SIZE))
     pub_note = f"publishers={partner_ids}" if pid_list else "all publishers"
     logger.info(
         f"[{date}] {total:,} rows / {len(offsets)} pages "
