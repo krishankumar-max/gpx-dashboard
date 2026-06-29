@@ -2114,8 +2114,8 @@
 </div>
 
 <!-- ══ AUTH: Login overlay ══════════════════════════════════════════════════ -->
-<!-- Shown when Supabase is configured and no session exists.               -->
-<!-- JS (_initAuth) hides it immediately in dev mode (no SUPABASE_URL).    -->
+<!-- Always shown on page load. _initAuth() hides it only after a valid    -->
+<!-- Supabase session is confirmed. Authentication is always mandatory.    -->
 <div id="auth-overlay">
   <div class="auth-card">
     <div class="auth-logo">

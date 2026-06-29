@@ -102,7 +102,7 @@ function qs(extra={}) {
 
 // ── Supabase Auth ─────────────────────────────────────────────────────────────
 // Config injected by Flask into <body> data-supabase-url / data-supabase-key.
-// When both are absent the entire auth layer is bypassed (local dev mode).
+// Authentication is mandatory. The dashboard never loads without a valid session.
 
 const _supabaseUrl = document.body.dataset.supabaseUrl || '';
 const _supabaseKey = document.body.dataset.supabaseKey || '';
@@ -134,9 +134,15 @@ function _setAuthUserLabel(user) {
 
 async function _initAuth() {
   if (!_sbClient) {
-    // Dev mode: Supabase not configured — boot dashboard directly.
-    _hideLoginOverlay();
-    await init();
+    // Supabase client could not be created (missing config or CDN load failure).
+    // Authentication is mandatory — keep the overlay visible and show an error.
+    _showLoginOverlay();
+    const errEl = document.getElementById('auth-error');
+    if (errEl) {
+      errEl.className = 'auth-msg auth-error';
+      errEl.textContent = 'Authentication service unavailable. Check SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.';
+      errEl.style.display = 'block';
+    }
     return;
   }
 
