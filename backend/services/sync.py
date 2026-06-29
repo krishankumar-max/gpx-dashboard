@@ -97,14 +97,20 @@ class SyncService:
         """
         Validate a sync request.
 
+        Reads enabled partners live from the repository on every call — no
+        caching, no hardcoded IDs.  Adding, removing, or toggling a partner in
+        the Administration UI takes effect on the next sync without a restart.
+
         Returns
         -------
         (publisher_ids, partner_names)
+          publisher_ids : set of str (Sapphyre numeric partner IDs)
+          partner_names : {str(id): human-readable name} for log labels
 
         Raises
         ------
         RuntimeError   — sync already running
-        ValueError     — invalid date range or no publishers configured
+        ValueError     — invalid date range or no enabled partners configured
         """
         if self.is_running():
             raise RuntimeError("Sync is already running")
@@ -116,27 +122,17 @@ class SyncService:
         if from_date > today:
             raise ValueError(f"from_date {from_date} is in the future")
 
-        publishers = self._pub_repo.get_all_raw()
-        if not publishers:
+        # Single source of truth: enabled partners from the repository.
+        # This call re-reads the DB/JSON on every sync start — intentionally live.
+        pid_ints, partner_names = self._pub_repo.get_enabled_partner_ids()
+
+        if not pid_ints:
             raise ValueError(
-                "No publishers configured. "
-                "Add publishers via Management → Publishers before syncing."
+                "No enabled partners configured. "
+                "Enable at least one partner in Administration → Publishers before syncing."
             )
 
-        publisher_ids: set[str] = set()
-        partner_names: dict[str, str] = {}
-        for p in publishers:
-            pid = str(p.get("publisher_id", "")).strip()
-            if pid:
-                publisher_ids.add(pid)
-                partner_names[pid] = str(p.get("partner_name", "Unknown")).strip()
-
-        if not publisher_ids:
-            raise ValueError(
-                "No publisher IDs found in publisher records. "
-                "Ensure each publisher has a numeric publisher_id."
-            )
-
+        publisher_ids: set[str] = {str(p) for p in pid_ints}
         return publisher_ids, partner_names
 
     def clear(self) -> dict:

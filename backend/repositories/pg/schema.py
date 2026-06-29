@@ -75,6 +75,7 @@ class PublisherORM(Base):
     id           = Column(String(36),  primary_key=True, default=lambda: str(uuid.uuid4()))
     publisher_id = Column(String(50),  nullable=False, unique=True, index=True)
     partner_name = Column(String(255), nullable=False, default="")
+    enabled      = Column(Boolean,     nullable=False, default=True)  # False = skip this partner during sync
     game_name    = Column(String(255), nullable=False, default="")
     game_id      = Column(String(50),  nullable=False, default="")
     game_type    = Column(String(20),  nullable=False, default="")

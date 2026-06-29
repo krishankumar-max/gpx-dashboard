@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -76,3 +77,20 @@ class JsonPublisherRepository(PublisherRepository):
             return False
         self.save_all_raw(new_records)
         return True
+
+    def get_enabled_partner_ids(self) -> tuple[list[int], dict[str, str]]:
+        partner_ids: list[int] = []
+        partner_names: dict[str, str] = {}
+        for rec in self.get_all_raw():
+            # Records without an "enabled" key are treated as enabled (backward compat)
+            if not rec.get("enabled", True):
+                continue
+            pid_str = str(rec.get("publisher_id", "")).strip()
+            try:
+                partner_ids.append(int(pid_str))
+                partner_names[pid_str] = str(rec.get("partner_name") or "Unknown").strip()
+            except ValueError:
+                logger.warning(
+                    f"JsonPublisherRepository: non-numeric publisher_id {pid_str!r} skipped."
+                )
+        return partner_ids, partner_names

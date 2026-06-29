@@ -19,17 +19,21 @@ SAPPHYRE_TIMEZONE: str = "Asia/Kolkata"
 
 # ── Sync tuning ───────────────────────────────────────────────────────────────
 # SYNC_WORKERS: parallel page-fetching threads PER day (inner pool).
-SYNC_WORKERS: int    = int(os.getenv("SYNC_WORKERS", "40"))
+# Hard-capped at 8 to prevent memory and connection exhaustion on t3.micro.
+# More than 8 concurrent threads on 1GB RAM causes OOM before any data is saved.
+SYNC_WORKERS: int    = min(int(os.getenv("SYNC_WORKERS", "6")), 8)
 
-# SYNC_PAGE_SIZE: rows per API request.  500 → 300 pages for 150k rows.
-#                 2000 → 75 pages — 4x fewer round-trips, much faster.
-#                 If Sapphyre rejects large pages, lower via env var.
-SYNC_PAGE_SIZE: int  = int(os.getenv("SYNC_PAGE_SIZE", "2000"))
+# SYNC_PAGE_SIZE: rows per API request.  The Sapphyre API silently caps responses
+# at 500 rows regardless of this value — see API_MAX_PAGE_SIZE below.
+SYNC_PAGE_SIZE: int  = int(os.getenv("SYNC_PAGE_SIZE", "500"))
 
 # SYNC_DAY_WORKERS: how many dates to fetch in parallel (outer pool).
-#                   2 = safe default (80 total connections to Sapphyre).
-#                   Raise to 3-4 only if the API handles it without rate-limiting.
-SYNC_DAY_WORKERS: int = int(os.getenv("SYNC_DAY_WORKERS", "2"))
+#                   1 = safest for t3.micro (6 page-threads already running).
+SYNC_DAY_WORKERS: int = int(os.getenv("SYNC_DAY_WORKERS", "1"))
+
+# DB_BATCH_SIZE: rows accumulated before flushing to the storage layer.
+# Keeps peak in-memory list bounded regardless of total day size.
+DB_BATCH_SIZE: int   = int(os.getenv("DB_BATCH_SIZE", "5000"))
 
 SYNC_DAYS_BACK: int  = int(os.getenv("SYNC_DAYS_BACK", "7"))
 

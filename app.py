@@ -213,7 +213,7 @@ def _do_sync(
                     "rows":        rows_so_far,
                 }
 
-        # ── Fetch (API-level publisher filter, parallel pages) ─────────────
+        # ── Fetch (streaming: pages flushed to callback as they arrive) ──────
         _day_labels = [
             f"{_pnames.get(str(p), 'Unknown')} ({p})"
             for p in sorted(pid_list)
@@ -222,15 +222,34 @@ def _do_sync(
         _is_live = (date == ist_today())
         if _is_live:
             _sync_log(f"[{date}] Live data window detected. Validation bypassed.")
-        rows = fetch_day_sync(date, partner_ids=pid_list, on_page_done=_on_page, is_live=_is_live)
-        downloaded = len(rows)
-        _sync_log(f"[{date}] ✓ Downloaded {downloaded:,} rows")
 
-        if not rows:
+        # Streaming accumulator: each flushed batch becomes a DataFrame chunk.
+        # Keeps peak RAM bounded to ~1 batch in the fetcher + growing DataFrame here.
+        _chunks: list[pd.DataFrame] = []
+
+        def _on_rows_ready(batch: list[dict]) -> None:
+            if not batch:
+                return
+            _chunks.append(pd.DataFrame(batch))
+
+        fetch_day_sync(
+            date,
+            partner_ids=pid_list,
+            on_page_done=_on_page,
+            on_rows_ready=_on_rows_ready,
+            is_live=_is_live,
+        )
+
+        if not _chunks:
             return {"downloaded": 0, "inserted": 0, "updated": 0, "skipped": 0}
 
+        # Build the full DataFrame from chunks — more memory-efficient than
+        # pd.DataFrame(list_of_180k_dicts) because each chunk was already
+        # freed from the fetcher's pending buffer before we get here.
+        new_df = pd.concat(_chunks, ignore_index=True)
+        _chunks.clear()   # release chunk references
+
         # ── Dedup within incoming batch ────────────────────────────────────
-        new_df = pd.DataFrame(rows)
         skipped = 0
         if "_id" in new_df.columns:
             before = len(new_df)
@@ -238,6 +257,9 @@ def _do_sync(
             skipped = before - len(new_df)
             if skipped:
                 _sync_log(f"[{date}] {skipped} intra-batch dupes removed")
+
+        downloaded = len(new_df)
+        _sync_log(f"[{date}] ✓ Downloaded {downloaded:,} rows")
 
         # ── Merge with existing parquet ────────────────────────────────────
         existing = load_day(date)

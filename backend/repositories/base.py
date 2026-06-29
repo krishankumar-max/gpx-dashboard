@@ -99,6 +99,20 @@ class PublisherRepository(ABC):
     def save_all_raw(self, records: list[dict]) -> None:
         """Drop-in replacement for: _cfg_write(_PUBLISHERS_FILE, records)"""
 
+    @abstractmethod
+    def get_enabled_partner_ids(self) -> tuple[list[int], dict[str, str]]:
+        """
+        Return (partner_ids, partner_names) for all enabled publishers.
+
+        partner_ids   : integer Sapphyre partner IDs (publisher_id cast to int,
+                        non-numeric entries skipped with a warning).
+        partner_names : {str(publisher_id): partner_name} label map for logging.
+
+        Returns ([], {}) when no enabled publishers are configured.
+        This is the single call the sync pipeline makes to resolve which
+        partners to fetch — it must never be bypassed or cached across runs.
+        """
+
 
 class PartnerRepository(ABC):
     """Persistence interface for partner (portal user) records."""

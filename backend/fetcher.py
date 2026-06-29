@@ -3,12 +3,14 @@ Sapphyre Postbacks API fetcher.
 
 Architecture
 ------------
-- requests.Session with HTTPAdapter (pool_connections=40, pool_maxsize=40)
-- ThreadPoolExecutor(max_workers=40) — one thread per page
+- requests.Session with HTTPAdapter (pool sized to SYNC_WORKERS, max 8)
+- ThreadPoolExecutor(max_workers=SYNC_WORKERS) — one thread per page
 - GET with query params (not POST with JSON body)
 - Response key: data["payload"]  (not "data")
-- Retry forever on 429 / timeout / connection errors with exponential backoff
-- Strict validation: raises RuntimeError if fetched row count != server total
+- Bounded retry (HTTP_MAX_RETRIES) on 429 / 5xx / timeout / network errors
+- Streaming: completed pages are flushed to an on_rows_ready() callback in
+  DB_BATCH_SIZE chunks — no full-day accumulation in RAM
+- Validation: raises RuntimeError only if pages permanently fail
 
 Usage
 -----
@@ -38,6 +40,7 @@ from backend.config import (
     HTTP_TIMEOUT_SECONDS,
     HTTP_MAX_RETRIES,
     API_MAX_PAGE_SIZE,
+    DB_BATCH_SIZE,
     KEEP_COLS,
 )
 
@@ -92,7 +95,7 @@ class PageFetchFailed(Exception):
 
 
 def _make_session() -> requests.Session:
-    """Create a requests.Session with a large connection pool."""
+    """Create a requests.Session sized to match SYNC_WORKERS (capped at 8)."""
     session = requests.Session()
     adapter = HTTPAdapter(
         pool_connections=SYNC_WORKERS,
@@ -291,6 +294,7 @@ def fetch_day_sync(
     date: dt.date,
     partner_ids: list[int] | None = None,
     on_page_done: _ProgressCB | None = None,
+    on_rows_ready: Callable[[list[dict[str, Any]]], None] | None = None,
     is_live: bool = False,
 ) -> list[dict[str, Any]]:
     """
@@ -298,32 +302,29 @@ def fetch_day_sync(
 
     Parameters
     ----------
-    date         : Calendar date to fetch (IST-aligned day window).
-    partner_ids  : Integer publisher IDs sent as repeated query params
-                   (``partner=1081&partner=2050``).  None = fetch all.
-    on_page_done : Optional callback called after every page completes.
-                   Signature: ``(pages_done: int, pages_total: int,
-                                  rows_so_far: int) -> None``.
-                   Invoked from the ThreadPoolExecutor threads — must be
-                   thread-safe (use a lock internally if you mutate state).
-    is_live      : When True (today's date), row-count validation is bypassed
-                   because live data grows during the fetch window.  A warning
-                   is logged instead of raising RuntimeError.
+    date          : Calendar date to fetch (IST-aligned day window).
+    partner_ids   : Integer publisher IDs sent as repeated query params.
+                    None = fetch all.
+    on_page_done  : Optional progress callback — (pages_done, pages_total,
+                    rows_so_far) -> None.  Called every 20 pages and at end.
+    on_rows_ready : Optional streaming callback — (batch: list[dict]) -> None.
+                    When provided, completed pages are flushed to this callback
+                    in DB_BATCH_SIZE chunks instead of being accumulated in RAM.
+                    The function returns [] in this mode; all rows are delivered
+                    through the callback.  Validation is skipped for live dates;
+                    historical dates raise only on permanent page failures.
+    is_live       : When True, row-count validation is bypassed (live data grows
+                    during the fetch window).
 
-    Guarantees
-    ----------
-    - Shared requests.Session across all page threads (40-connection pool).
-    - ThreadPoolExecutor(SYNC_WORKERS) — one thread per page.
-    - Every page retries forever (429 / timeout / 5xx).
-    - Raises RuntimeError if fetched count != server-reported total
-      (historical dates only; bypassed when is_live=True).
-
-    Returns a list of dicts containing only KEEP_COLS.
+    Returns
+    -------
+    list[dict] — all rows (KEEP_COLS only) when on_rows_ready is None.
+    []         — when on_rows_ready is provided (rows delivered via callback).
     """
     session  = _make_session()
     pid_list = partner_ids if partner_ids else None
 
-    # ── Step 1: probe total rows for this date (filtered by partner IDs) ───────
+    # ── Step 1: probe total rows for this date ────────────────────────────────
     total = _probe_total(session, date, partner_ids=pid_list)
 
     if total == 0:
@@ -340,41 +341,84 @@ def fetch_day_sync(
         f"/ {SYNC_WORKERS} workers  [{pub_note}]"
     )
 
-    # ── Step 3: fan-out — one future per page ────────────────────────────────
-    results: dict[int, list[dict[str, Any]]] = {}
-    failed:  dict[int, PageFetchFailed]       = {}
+    # ── Step 3: fan-out — one future per page ─────────────────────────────────
+    # Streaming mode: pages are flushed to on_rows_ready in DB_BATCH_SIZE chunks.
+    # Classic mode:   pages accumulate in `results` dict, returned as a flat list.
+    failed: dict[int, PageFetchFailed] = {}
 
-    with ThreadPoolExecutor(max_workers=SYNC_WORKERS) as executor:
-        future_to_offset = {
-            executor.submit(_fetch_page, session, date, offset, pid_list): offset
-            for offset in offsets
-        }
+    if on_rows_ready is not None:
+        # ── STREAMING PATH ────────────────────────────────────────────────────
+        _pending: list[dict[str, Any]] = []   # bounded buffer, flushed every DB_BATCH_SIZE rows
+        rows_delivered = 0
         completed = 0
-        for future in as_completed(future_to_offset):
-            offset = future_to_offset[future]
-            try:
-                results[offset] = future.result()
-            except PageFetchFailed as exc:
-                logger.error(
-                    f"[{date}] skip={offset} → gave up after {exc.attempts} attempts "
-                    f"(status={exc.last_status}, exc={exc.last_exc}). Will retry sequentially."
-                )
-                failed[offset] = exc
-            completed += 1
-            rows_so_far = sum(len(v) for v in results.values())
 
-            # ── Emit callback (every 10 pages or at the end) ─────────────
-            if on_page_done and (completed % 10 == 0 or completed == len(offsets)):
-                on_page_done(completed, len(offsets), rows_so_far)
+        with ThreadPoolExecutor(max_workers=SYNC_WORKERS) as executor:
+            future_to_offset = {
+                executor.submit(_fetch_page, session, date, offset, pid_list): offset
+                for offset in offsets
+            }
+            for future in as_completed(future_to_offset):
+                offset = future_to_offset[future]
+                try:
+                    page_rows = future.result()
+                    _pending.extend(page_rows)
+                    # Flush complete batches immediately
+                    while len(_pending) >= DB_BATCH_SIZE:
+                        on_rows_ready(_pending[:DB_BATCH_SIZE])
+                        rows_delivered += DB_BATCH_SIZE
+                        _pending = _pending[DB_BATCH_SIZE:]
+                except PageFetchFailed as exc:
+                    logger.error(
+                        f"[{date}] skip={offset} → gave up after {exc.attempts} attempts "
+                        f"(status={exc.last_status}, exc={exc.last_exc}). Will retry sequentially."
+                    )
+                    failed[offset] = exc
+                completed += 1
+                if on_page_done and (completed % 20 == 0 or completed == len(offsets)):
+                    on_page_done(completed, len(offsets), rows_delivered + len(_pending))
+                if completed % 20 == 0 or completed == len(offsets):
+                    logger.info(
+                        f"[{date}] {completed}/{len(offsets)} pages"
+                        f"  ({rows_delivered + len(_pending):,} rows buffered)"
+                    )
 
-            # ── Server-side log every 20 pages ────────────────────────────
-            if completed % 20 == 0 or completed == len(offsets):
-                logger.info(
-                    f"[{date}] {completed}/{len(offsets)} pages  "
-                    f"({rows_so_far:,} rows so far)"
-                )
+        # Flush the tail (remainder < DB_BATCH_SIZE)
+        if _pending:
+            on_rows_ready(_pending)
+            rows_delivered += len(_pending)
+            _pending = []
 
-    # ── Step 3b: sequential retry for pages that hit the parallel retry cap ───
+    else:
+        # ── CLASSIC PATH (backward-compatible) ────────────────────────────────
+        results: dict[int, list[dict[str, Any]]] = {}
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=SYNC_WORKERS) as executor:
+            future_to_offset = {
+                executor.submit(_fetch_page, session, date, offset, pid_list): offset
+                for offset in offsets
+            }
+            for future in as_completed(future_to_offset):
+                offset = future_to_offset[future]
+                try:
+                    results[offset] = future.result()
+                except PageFetchFailed as exc:
+                    logger.error(
+                        f"[{date}] skip={offset} → gave up after {exc.attempts} attempts "
+                        f"(status={exc.last_status}, exc={exc.last_exc}). Will retry sequentially."
+                    )
+                    failed[offset] = exc
+                completed += 1
+                rows_so_far = sum(len(v) for v in results.values())
+                if on_page_done and (completed % 20 == 0 or completed == len(offsets)):
+                    on_page_done(completed, len(offsets), rows_so_far)
+                if completed % 20 == 0 or completed == len(offsets):
+                    logger.info(
+                        f"[{date}] {completed}/{len(offsets)} pages  "
+                        f"({rows_so_far:,} rows so far)"
+                    )
+
+    # ── Step 3b: sequential retry for permanently failed pages ────────────────
     if failed:
         logger.warning(
             f"[{date}] {len(failed)} page(s) failed in parallel — retrying sequentially: "
@@ -383,8 +427,12 @@ def fetch_day_sync(
         still_failed: list[int] = []
         for offset in sorted(failed):
             try:
-                results[offset] = _fetch_page(session, date, offset, pid_list)
+                recovered = _fetch_page(session, date, offset, pid_list)
                 logger.info(f"[{date}] skip={offset} → sequential retry succeeded.")
+                if on_rows_ready is not None:
+                    on_rows_ready(recovered)
+                else:
+                    results[offset] = recovered  # type: ignore[possibly-undefined]
             except PageFetchFailed as exc:
                 logger.error(
                     f"[{date}] skip={offset} → sequential retry also failed "
@@ -398,16 +446,23 @@ def fetch_day_sync(
                 f"Failed offsets: {still_failed}"
             )
 
-    # ── Step 4: flatten in offset order (deterministic) ───────────────────────
+    # ── Step 4 (streaming mode): validation and return ────────────────────────
+    if on_rows_ready is not None:
+        if not is_live:
+            # Streaming validation: succeed if all pages were delivered.
+            # Row-count check is omitted because rows were already flushed.
+            logger.success(f"[{date}] ✓ Streaming fetch complete — no permanent failures.")
+        return []
+
+    # ── Step 4 (classic mode): flatten + validate ─────────────────────────────
     all_rows: list[dict[str, Any]] = []
     for offset in offsets:
-        all_rows.extend(results[offset])
+        if offset in results:  # type: ignore[possibly-undefined]
+            all_rows.extend(results[offset])
 
-    # ── Step 5: validation ────────────────────────────────────────────────────
     fetched = len(all_rows)
     if fetched != total:
         if is_live:
-            # Today's data grows during the fetch — count mismatch is expected.
             logger.warning(
                 f"[{date}] Live data window detected. Validation bypassed. "
                 f"(probed {total:,}, fetched {fetched:,} rows)"

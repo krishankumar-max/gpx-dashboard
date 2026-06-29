@@ -15,6 +15,7 @@ def _orm_to_dict(row) -> dict:
         "id":               row.id,
         "publisher_id":     row.publisher_id,
         "partner_name":     row.partner_name,
+        "enabled":          bool(row.enabled) if row.enabled is not None else True,
         "game_name":        row.game_name,
         "game_id":          row.game_id,
         "game_type":        row.game_type,
@@ -31,6 +32,7 @@ def _dict_to_orm_kwargs(data: dict) -> dict:
         "id":               data.get("id"),
         "publisher_id":     str(data.get("publisher_id", "")).strip(),
         "partner_name":     str(data.get("partner_name", "")).strip(),
+        "enabled":          bool(data.get("enabled", True)),
         "game_name":        str(data.get("game_name",   "")).strip(),
         "game_id":          str(data.get("game_id",     "")).strip(),
         "game_type":        str(data.get("game_type",   "")).strip(),
@@ -130,3 +132,26 @@ class PgPublisherRepository(PublisherRepository):
                 return False
             session.delete(row)
         return True
+
+    def get_enabled_partner_ids(self) -> tuple[list[int], dict[str, str]]:
+        from backend.repositories.pg.db import get_session
+        from backend.repositories.pg.schema import PublisherORM
+        partner_ids: list[int] = []
+        partner_names: dict[str, str] = {}
+        with get_session() as session:
+            rows = (
+                session.query(PublisherORM)
+                .filter(PublisherORM.enabled == True)  # noqa: E712
+                .order_by(PublisherORM.publisher_id)
+                .all()
+            )
+        for row in rows:
+            pid_str = str(row.publisher_id).strip()
+            try:
+                partner_ids.append(int(pid_str))
+                partner_names[pid_str] = str(row.partner_name or "Unknown").strip()
+            except ValueError:
+                logger.warning(
+                    f"PgPublisherRepository: non-numeric publisher_id {pid_str!r} skipped."
+                )
+        return partner_ids, partner_names

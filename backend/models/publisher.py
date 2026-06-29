@@ -27,6 +27,11 @@ class Publisher(AppBaseModel):
     publisher_id: str = ""
     partner_name: str = ""
 
+    # ── Sync flag ─────────────────────────────────────────────────────────────
+    # When False this partner is excluded from every sync run.
+    # Defaults to True so existing records remain active after migration.
+    enabled: bool = True
+
     # ── Game info ─────────────────────────────────────────────────────────────
     game_name: str = ""
     game_id:   str = ""
@@ -72,6 +77,7 @@ class Publisher(AppBaseModel):
 class PublisherCreate(AppBaseModel):
     publisher_id:    str
     partner_name:    str
+    enabled:         bool           = True
     game_name:       str            = ""
     game_id:         str            = ""
     game_type:       str            = ""
@@ -83,5 +89,6 @@ class PublisherCreate(AppBaseModel):
 
 
 class PublisherUpdate(PublisherCreate):
-    publisher_id: str = ""
-    partner_name: str = ""
+    publisher_id: str  = ""
+    partner_name: str  = ""
+    enabled:      bool = True
