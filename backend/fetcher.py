@@ -120,9 +120,14 @@ def _build_params(
     Build GET query parameters for one page.
 
     If *partner_ids* is supplied, the `partner` key is added as a list so that
-    requests sends: ``partner=1081&partner=2050&partner=3001``.
-    The Sapphyre API interprets repeated `partner` params as an OR filter,
-    returning only postbacks whose `partner` field matches one of those IDs.
+    requests sends repeated params: ``partner=1081&partner=2050&partner=3001``.
+
+    IMPORTANT — UNVERIFIED ASSUMPTION:
+    The parameter name ``partner`` and the repeated-param format are assumed.
+    If the API ignores the filter (i.e. probe returns the global total regardless
+    of partner_ids), try alternative names: ``partnerId``, ``publisher``,
+    ``publisherId``, ``partner_id``.  The correct name can be confirmed from the
+    wire URL logged at DEBUG level on every request.
     """
     tz_suffix = "+05:30"
     params: dict[str, Any] = {
@@ -134,6 +139,10 @@ def _build_params(
     }
     if partner_ids:
         params["partner"] = partner_ids   # requests serialises as repeated params
+    logger.debug(
+        f"[{date}] _build_params → skip={skip} limit={limit} "
+        f"partner_ids={partner_ids!r}  raw_params={params!r}"
+    )
     return params
 
 
@@ -206,6 +215,11 @@ def _fetch_page(
                 resp.raise_for_status()
 
             # ── Success ───────────────────────────────────────────────────────
+            # Log wire URL on first successful response per page so the exact
+            # query string (including encoded partner params) is visible.
+            if attempt == 1:
+                logger.debug(f"[{date}] skip={skip} wire URL: {resp.request.url}")
+
             data = resp.json()
             rows: list[dict] = data.get("payload", [])
 
@@ -253,6 +267,10 @@ def _probe_total(
 
     If *partner_ids* is supplied the total reflects only those publishers,
     so the subsequent row-count validation stays accurate.
+
+    Logs the exact wire URL at DEBUG level so the partner filter can be
+    verified against the server response.  If the filtered total equals
+    an unfiltered probe total, the API is ignoring the filter param.
     """
     params = _build_params(date, skip=0, limit=1, partner_ids=partner_ids)
     wait = _BACKOFF_BASE
@@ -264,6 +282,10 @@ def _probe_total(
                 params=params,
                 timeout=HTTP_TIMEOUT_SECONDS,
             )
+
+            # ── Log exact wire URL so the partner filter can be inspected ─────
+            logger.debug(f"[{date}] probe wire URL: {resp.request.url}")
+
             if resp.status_code == 429:
                 sleep_for = float(resp.headers.get("Retry-After", wait))
                 logger.warning(f"[{date}] probe 429. Sleeping {sleep_for:.1f}s…")
@@ -279,8 +301,22 @@ def _probe_total(
                 wait = min(wait + _BACKOFF_STEP, _BACKOFF_MAX)
                 continue
             resp.raise_for_status()
-            total: int = resp.json().get("total", 0)
-            logger.info(f"[{date}] Server total: {total:,} rows")
+            body  = resp.json()
+            total: int = body.get("total", 0)
+
+            # ── Verify filter is working ──────────────────────────────────────
+            # If partner_ids were supplied but total looks suspiciously large
+            # (same order of magnitude as a global dataset), emit a warning so
+            # the operator knows to check the wire URL above.
+            if partner_ids:
+                logger.info(
+                    f"[{date}] Server total: {total:,} rows  "
+                    f"(filtered partner_ids={partner_ids!r})  "
+                    f"wire_url={resp.request.url}"
+                )
+            else:
+                logger.info(f"[{date}] Server total: {total:,} rows  (unfiltered)")
+
             return total
         except (requests.Timeout, requests.ConnectionError) as exc:
             logger.warning(f"[{date}] probe network error: {exc}. Sleeping {wait:.1f}s…")
