@@ -201,11 +201,18 @@ class AnalyticsService:
             _bids = pd.Series(
                 [_bid_lookup.get(k, 0.0) for k in _keys], index=df.index, dtype=float
             )
-            df["config_revenue"] = (df["conversions"].astype(float) * _bids).round(4)
+            # Use unique_installs as the conversion count where it is available
+            # (install-type goals deduped by cid).  For non-install goals
+            # unique_installs is 0, so fall back to raw conversions.
+            # This keeps revenue / bid == displayed Conversions for every goal.
+            _rev_count = df["unique_installs"].astype(float).where(
+                df["unique_installs"] > 0, df["conversions"].astype(float)
+            )
+            df["config_revenue"] = (_rev_count * _bids).round(4)
         else:
             df["config_revenue"] = 0.0
 
-        # Revenue is always config_revenue (conversions × bid).
+        # Revenue is always unique_installs (or conversions for non-install goals) × bid.
         # No Sapphyre fallback. No revenue_source branching.
         df["revenue"] = df["config_revenue"]
         # All revenue in the enriched summary is config-based; pin the column

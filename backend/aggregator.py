@@ -15,11 +15,15 @@ date             : str  (YYYY-MM-DD)
 partner          : str
 offerName        : str
 goal             : str
-revenue          : float
-payout           : float
-conversions      : int   (total rows in that group)
-valid_conversions : int  (rows where valid == True)
-unique_installs  : int   (COUNT DISTINCT cid for install goals)
+payout           : float  (publisher cost — sum of raw payout field)
+conversions      : int    (total postback rows in group — used for revenue = conversions × bid)
+valid_conversions : int   (rows where valid == True)
+unique_installs  : int    (COUNT DISTINCT cid for install goals)
+
+Revenue is NOT stored here. It is always derived at query time in
+get_enriched_summary() as: conversions × configured_bid_from_game_config.
+Sapphyre's raw per-event revenue field is intentionally excluded from the
+aggregated summary to prevent it from ever being used as a business metric.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ def _summarise_day(df: pd.DataFrame, date: dt.date) -> pd.DataFrame:
     Returns an empty DataFrame if the input is empty.
     """
     _cols = AGG_GROUP_COLS + [
-        "revenue", "payout", "conversions", "valid_conversions", "unique_installs"
+        "payout", "conversions", "valid_conversions", "unique_installs"
     ]
     if df.empty:
         return pd.DataFrame(columns=_cols)
@@ -58,8 +62,9 @@ def _summarise_day(df: pd.DataFrame, date: dt.date) -> pd.DataFrame:
     df["date"] = date.isoformat()
     df["conversions"] = 1  # each row = one conversion event
 
-    for col in ("revenue", "payout"):
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    # Only payout is stored. Revenue is NOT aggregated from Sapphyre's raw field —
+    # it is always computed at query time as: conversions × configured_bid_from_game_config.
+    df["payout"] = pd.to_numeric(df.get("payout"), errors="coerce").fillna(0.0)
 
     df["valid_conversions"] = df["valid"].apply(lambda v: 1 if v is True else 0)
 
@@ -69,7 +74,6 @@ def _summarise_day(df: pd.DataFrame, date: dt.date) -> pd.DataFrame:
     summary = (
         df.groupby(AGG_GROUP_COLS, dropna=False)
         .agg(
-            revenue=("revenue", "sum"),
             payout=("payout", "sum"),
             conversions=("conversions", "sum"),
             valid_conversions=("valid_conversions", "sum"),

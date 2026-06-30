@@ -4365,8 +4365,9 @@ let _gcPubKpi    = { retention: [], roas: [] };
 let _gcClientKpi = { retention: [], roas: [] };
 let _gcFunnel    = [];   // [{goal:'', pct:'', time_val:'', time_unit:'Days', payout:''}]
 let _gcFilter    = 'all';
-let _gcDiscovered = [];  // cached from /api/admin/games/discovered
-let _gcConfigs    = [];  // cached from /api/admin/games
+let _gcDiscovered    = [];     // cached from /api/admin/games/discovered
+let _gcConfigs       = [];     // cached from /api/admin/games
+let _gcPromotePending = false; // true when form was opened from a pending stub (not an existing configured record)
 
 // ── Render helpers ───────────────────────────────────────────────
 
@@ -4978,7 +4979,8 @@ function _gcStartFromDiscovered(offer_id) {
   document.getElementById('gc-form-title').innerHTML   = '<i class="fas fa-gamepad" style="color:var(--primary)"></i> Configure Game';
   document.getElementById('gc-save-label').textContent = 'Save Configuration';
   document.getElementById('gc-cancel-btn').style.display = 'inline-flex';
-  document.getElementById('gc-edit-id').value = '';
+  document.getElementById('gc-edit-id').value = d.config_id || '';
+  _gcPromotePending = true;
   document.getElementById('gc-form-card').scrollIntoView({ behavior:'smooth' });
 }
 
@@ -5060,7 +5062,8 @@ function _ucConfigure(game) {
   }
   // Clear any active edit
   const editIdEl = document.getElementById('gc-edit-id');
-  if (editIdEl) editIdEl.value = '';
+  if (editIdEl) editIdEl.value = game.config_id || '';
+  _gcPromotePending = true;
   const banner = document.getElementById('gc-game-info-banner');
   if (banner) banner.style.display = 'none';
 
@@ -5100,12 +5103,20 @@ async function saveGameConfig() {
     }));
 
   const em = document.getElementById('gc-f-expected_margin')?.value;
+
+  // A pending promotion is when editId points to a record that is not yet in
+  // the configured list (i.e. it is a pending stub from seed_from_sync).
+  // In this case we must also flip campaign_status so the record leaves the
+  // _gcPromotePending is set explicitly at the entry point (configure vs edit path).
+  const isPendingPromotion = !!editId && _gcPromotePending;
+
   const payload = {
     offer_id, offer_name, game_type, payable_goals,
     publisher_kpi:  { retention: _cleanKpi(_gcPubKpi.retention),    roas: _cleanKpi(_gcPubKpi.roas)    },
     client_kpi:     { retention: _cleanKpi(_gcClientKpi.retention),  roas: _cleanKpi(_gcClientKpi.roas)  },
     expected_funnel,
     expected_margin: em !== '' && em != null ? parseFloat(em) : null,
+    ...(isPendingPromotion ? { campaign_status: 'live' } : {}),
   };
 
   const url    = editId ? `/api/admin/games/${editId}` : '/api/admin/games';
@@ -5118,7 +5129,16 @@ async function saveGameConfig() {
     const saved = await r.json();
     if (editId) {
       const idx = _gcConfigs.findIndex(x => x.id === editId);
-      if (idx !== -1) _gcConfigs[idx] = saved;
+      if (idx !== -1) {
+        // Normal edit of an already-configured record
+        _gcConfigs[idx] = saved;
+      } else {
+        // Pending stub promoted to live — add to configured list and refresh panels
+        _gcConfigs.push(saved);
+        const disc = _gcDiscovered.find(x => x.offer_id === saved.offer_id);
+        if (disc) disc.configured = true;
+        loadUnconfiguredGames();
+      }
     } else {
       _gcConfigs.push(saved);
       // Keep discovered list in sync so "Pending" filter reflects new state
@@ -5128,7 +5148,7 @@ async function saveGameConfig() {
     cancelGameEdit();
     _gcRenderTable();
     _invalidateAnalytics();
-    showToast(editId ? '✓ Game configuration updated' : '✓ Game configured');
+    showToast(isPendingPromotion ? '✓ Game configured' : editId ? '✓ Game configuration updated' : '✓ Game configured');
   } finally {
     _btnIdle(btn);
   }
@@ -5138,6 +5158,7 @@ async function editGameConfig(id) {
   const c = _gcConfigs.find(x => x.id === id);
   if (!c) return;
 
+  _gcPromotePending = false;
   document.getElementById('gc-edit-id').value        = id;
   document.getElementById('gc-f-offer_name').value   = c.offer_name || '';
   document.getElementById('gc-f-offer_id').value     = c.offer_id   || '';
@@ -5208,6 +5229,7 @@ async function deleteGameConfig(btn, id) {
 }
 
 function cancelGameEdit() {
+  _gcPromotePending = false;
   document.getElementById('gc-edit-id').value = '';
   _gcFormClear();
   _clearFormError('gc-form-error');
