@@ -296,19 +296,45 @@ function _armDeleteBtn(btn, callback) {
   setTimeout(() => document.addEventListener('click', outsideClick, { capture: true, once: true }), 0);
 }
 
-/**
- * Invalidate all analytics page caches so the next visit always re-fetches.
- * If the user is already on an analytics page, trigger a silent refresh now
- * so the dashboard stays current without a manual reload.
- */
-function _invalidateAnalytics(alsoRefresh = true) {
-  ['overview', 'health', 'publishers', 'offers', 'analytics'].forEach(k => _loaded.delete(k));
-  ['publishers:summary', 'offers:summary', 'offers:funnel',
-   'analytics:weekly', 'analytics:monthly', 'analytics:trend'].forEach(k => _loaded.delete(k));
-  if (alsoRefresh) {
-    const p = state.page;
-    if (p === 'overview' || p === 'health') loadPageData(p);
+// ── Analytics cache invalidation ──────────────────────────────────
+//  scope='config'  publisher/game-config CRUD: only overview + health summaries
+//                  change. Sub-tabs (trend, funnel, analytics) are unaffected
+//                  because they read raw aggregated data, not config metadata.
+//  scope='full'    sync completed: underlying parquet data changed — everything
+//                  must be re-fetched on next visit.
+//
+//  The refresh is debounced (400 ms) so rapid consecutive mutations collapse
+//  into a single API round-trip. An in-flight guard prevents concurrent
+//  refreshes from doubling up on the same expensive endpoints.
+// ─────────────────────────────────────────────────────────────────
+let _analyticsRefreshTimer  = null;
+let _analyticsRefreshing    = false;
+
+function _invalidateAnalytics(scope = 'config') {
+  // Always mark the two summary pages stale
+  _loaded.delete('overview');
+  _loaded.delete('health');
+
+  if (scope === 'full') {
+    // Sync changed the raw data — all pages and sub-tabs need re-fetch
+    ['publishers', 'offers', 'analytics'].forEach(k => _loaded.delete(k));
+    ['publishers:summary', 'offers:summary', 'offers:funnel',
+     'analytics:weekly', 'analytics:monthly', 'analytics:trend'].forEach(k => _loaded.delete(k));
   }
+  // 'config' scope: leave publishers/offers/analytics sub-tab keys intact —
+  // they are expensive and unaffected by config-only mutations.
+
+  // Debounced, guarded refresh: only fires when the user is actually watching
+  // the overview or health page, and never runs two fetches simultaneously.
+  clearTimeout(_analyticsRefreshTimer);
+  _analyticsRefreshTimer = setTimeout(async () => {
+    const p = state.page;
+    if (p !== 'overview' && p !== 'health') return; // background tab — skip, let lazy load handle it
+    if (_analyticsRefreshing) return;                // already refreshing — skip duplicate
+    _analyticsRefreshing = true;
+    try { await loadPageData(p); }
+    finally { _analyticsRefreshing = false; }
+  }, 400);
 }
 
 function noChart(id, msg='No data for the selected range') {
@@ -3987,7 +4013,7 @@ function _syncPoll() {
         // Fire analytics invalidation exactly once when a sync transitions to finished
         if (s.finished && _syncWasRunning) {
           _syncWasRunning = false;
-          _invalidateAnalytics();
+          _invalidateAnalytics('full');  // sync rewrites raw data — invalidate everything
         }
       }
     })
@@ -4934,7 +4960,6 @@ async function saveClient() {
     cancelClientEdit();
     _loaded.delete('administration:clients');
     showToast(editId ? '✓ Client updated' : '✓ Client added');
-    _invalidateAnalytics();
   } finally {
     _btnIdle(btn);
   }
@@ -4961,7 +4986,6 @@ async function _doDeleteClient(id) {
     _renderClientTable();
     _loaded.delete('administration:clients');
     showToast('✓ Client deleted');
-    _invalidateAnalytics();
   } catch(e) { showToast('Network error — client may not have been deleted', 'error'); }
 }
 
