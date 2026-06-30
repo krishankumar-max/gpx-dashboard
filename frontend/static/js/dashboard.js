@@ -541,7 +541,7 @@ async function loadStatus() {
       if (txt) txt.textContent='Data up to date';
       if (sub) sub.textContent=`${d.min_date} → ${d.max_date}`;
     } else {
-      if (badge) badge.innerHTML='<i class="fas fa-exclamation-triangle" style="color:#f59e0b"></i> <span>No data</span>';
+      if (badge) badge.innerHTML='<i class="fas fa-triangle-exclamation" style="color:#f59e0b"></i> <span>No data</span>';
       document.getElementById('no-data-notice')?.classList.remove('d-none');
     }
   } catch { }
@@ -3845,7 +3845,7 @@ async function init() {
     console.error('FATAL: Plotly failed to load from CDN. Charts will not render. Check network connectivity or CDN availability.');
     // Banner in each chart container so it's visible in the UI
     document.querySelectorAll('.chart-container, [id^="chart-"]').forEach(el => {
-      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef4444;font-size:13px;padding:16px;text-align:center"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>Chart library failed to load. Please check your internet connection and refresh.</div>';
+      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef4444;font-size:13px;padding:16px;text-align:center"><i class="fas fa-triangle-exclamation" style="margin-right:6px"></i>Chart library failed to load. Please check your internet connection and refresh.</div>';
     });
   }
 
@@ -3930,7 +3930,7 @@ async function loadAdministration() {
     if (badge) badge.textContent = pubs.length + ' publishers';
     if (list) {
       if (!pubs.length) {
-        list.innerHTML = '<span style="color:var(--amber);font-size:13px;font-weight:600"><i class="fas fa-warning" style="margin-right:4px"></i>No publishers configured — go to Administration → Publishers first</span>';
+        list.innerHTML = '<span style="color:var(--amber);font-size:13px;font-weight:600"><i class="fas fa-triangle-exclamation" style="margin-right:4px"></i>No publishers configured — go to Administration → Publishers first</span>';
       } else {
         list.innerHTML = pubs.map(p =>
           `<span class="pub-chip">${esc(p.partner_name ? `${p.partner_name} (${p.publisher_id})` : p.publisher_id)}</span>`
