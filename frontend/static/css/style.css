@@ -2517,6 +2517,140 @@ tr.pub-row-paused td:last-child { opacity: 1; }
 /* ── Utilities ───────────────────────────────────────────────────── */
 .d-none { display: none !important; }
 
+/* ══════════════════════════════════════════════════════════════════
+   UX POLISH — Toast · Skeleton · Form Error · Armed Delete · Inline Confirm
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Toast notifications ─────────────────────────────────────────── */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 340px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(15,23,42,.22);
+  pointer-events: auto;
+  animation: toast-in .2s cubic-bezier(.22,.68,0,1.2);
+  transition: opacity .28s ease, transform .28s ease;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.toast.toast-out { opacity: 0; transform: translateX(12px); }
+.toast-success { background: #10b981; }
+.toast-error   { background: #ef4444; }
+.toast-info    { background: #3b82f6; }
+.toast-icon    { flex-shrink: 0; font-size: 14px; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Skeleton loaders ────────────────────────────────────────────── */
+.skel-line {
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s infinite linear;
+}
+.skel-line-sm { height: 10px; width: 60%; }
+@keyframes skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+tr.skel-row td { padding: 11px 16px; vertical-align: middle; }
+
+/* ── Inline form error message ───────────────────────────────────── */
+.form-error-msg {
+  display: none;
+  font-size: 12px;
+  color: var(--red, #ef4444);
+  font-weight: 500;
+  margin-top: 6px;
+  padding: 7px 10px;
+  background: rgba(239,68,68,.08);
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: 6px;
+}
+.form-error-msg::before {
+  content: '\f057  ';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  margin-right: 5px;
+}
+
+/* ── Armed delete button (2-click confirm) ───────────────────────── */
+.tbl-btn-del-armed {
+  background: var(--red, #ef4444) !important;
+  color: #fff !important;
+  border-color: var(--red, #ef4444) !important;
+  font-weight: 600 !important;
+  animation: armed-pulse .5s ease;
+}
+@keyframes armed-pulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* ── Inline clear-database confirm ──────────────────────────────── */
+.inline-db-confirm {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: rgba(239,68,68,.07);
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.inline-db-confirm.open { display: flex; }
+.inline-db-confirm-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red, #ef4444);
+  white-space: nowrap;
+}
+.inline-db-confirm-input {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 5px 10px;
+  border: 1px solid rgba(239,68,68,.35);
+  border-radius: 5px;
+  background: var(--bg-card, #fff);
+  color: var(--txt-head, #0f172a);
+  width: 110px;
+  outline: none;
+  transition: border-color .15s;
+}
+.inline-db-confirm-input:focus { border-color: var(--red, #ef4444); }
+
+/* ── Inline sync form error ─────────────────────────────────────── */
+.sync-form-error {
+  display: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--red, #ef4444);
+  margin-top: 6px;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .sidebar {

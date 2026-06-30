@@ -1594,6 +1594,13 @@
               <i class="fas fa-trash"></i> Clear Database
             </button>
           </div>
+          <div class="inline-db-confirm" id="clear-db-confirm">
+            <span class="inline-db-confirm-label"><i class="fas fa-triangle-exclamation"></i> Type DELETE to confirm:</span>
+            <input type="text" id="clear-db-token" class="inline-db-confirm-input" placeholder="DELETE" autocomplete="off">
+            <button class="btn-danger btn-xs" onclick="confirmClearDatabase()">Clear All Data</button>
+            <button class="btn-ghost btn-xs" onclick="_hideClearConfirm()">Cancel</button>
+          </div>
+          <p id="sync-form-error" class="sync-form-error"></p>
         </div>
 
         <!-- Configured publishers preview -->
@@ -1675,11 +1682,12 @@
             <span class="pub-enabled-hint">Uncheck to pause this partner without deleting their data.</span>
           </div>
           <div class="mgmt-actions">
-            <button class="btn-primary" onclick="savePub()">
+            <button class="btn-primary" id="pub-save-btn" onclick="savePub()">
               <i class="fas fa-save"></i> <span id="pub-save-label">Add Publisher</span>
             </button>
             <button class="btn-ghost" id="pub-cancel-btn" onclick="cancelPubEdit()" style="display:none">Cancel</button>
           </div>
+          <p id="pub-form-error" class="form-error-msg"></p>
         </div>
 
         <!-- Publishers table -->
@@ -1908,11 +1916,12 @@
           </div>
 
           <div class="mgmt-actions">
-            <button class="btn-primary" onclick="saveGameConfig()">
+            <button class="btn-primary" id="gc-save-btn" onclick="saveGameConfig()">
               <i class="fas fa-save"></i> <span id="gc-save-label">Save Configuration</span>
             </button>
             <button class="btn-ghost" id="gc-cancel-btn" onclick="cancelGameEdit()" style="display:none">Cancel</button>
           </div>
+          <p id="gc-form-error" class="form-error-msg"></p>
         </div>
 
         <!-- Games table -->
@@ -2006,11 +2015,12 @@
             </div>
           </div>
           <div class="mgmt-actions">
-            <button class="btn-primary" onclick="saveClient()">
+            <button class="btn-primary" id="client-save-btn" onclick="saveClient()">
               <i class="fas fa-save"></i> <span id="client-save-label">Add Client</span>
             </button>
             <button class="btn-ghost" id="client-cancel-btn" onclick="cancelClientEdit()" style="display:none">Cancel</button>
           </div>
+          <p id="client-form-error" class="form-error-msg"></p>
         </div>
 
         <!-- Clients table -->
@@ -2120,5 +2130,8 @@
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 <script src="/static/js/dashboard.js"></script>
+
+<!-- Toast notification container -->
+<div id="toast-container"></div>
 </body>
 </html>

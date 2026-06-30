@@ -47,6 +47,10 @@ const state = { from_date:'', to_date:'', partners:[], offers:[], page:'overview
 const _loaded = new Set();
 let tsPartner, tsOffer;
 
+// ── Admin local caches (avoid redundant fetches) ──────────────────
+let _pubList    = [];   // cache for /api/management/publishers
+let _clientList = [];   // cache for /api/management/clients
+
 // ── Partner name mapping: publisher_id → partner_name ─────────────────────────
 // Loaded once at init and refreshed after any publisher CRUD operation.
 window._partnerMap = {};
@@ -208,6 +212,105 @@ function loading(on) {
   document.getElementById('btn-refresh')?.classList.toggle('loading', on);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  UX UTILITIES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Toast notifications ───────────────────────────────────────────
+function showToast(msg, type = 'success', duration = 3200) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' };
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<i class="fas ${icons[type] || icons.info} toast-icon"></i><span>${esc(msg)}</span>`;
+  container.appendChild(t);
+  const dismiss = () => {
+    t.classList.add('toast-out');
+    setTimeout(() => t.remove(), 300);
+  };
+  t._timer = setTimeout(dismiss, duration);
+  t.addEventListener('click', () => { clearTimeout(t._timer); dismiss(); });
+}
+
+// ── Button loading state ──────────────────────────────────────────
+function _btnBusy(btn, spinnerLabel = '') {
+  if (!btn) return;
+  btn.dataset.origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i class="fas fa-circle-notch fa-spin" style="font-size:11px;margin-right:4px"></i>${esc(spinnerLabel) || ''}`;
+}
+function _btnIdle(btn) {
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.origHtml !== undefined) btn.innerHTML = btn.dataset.origHtml;
+}
+
+// ── Inline form error ─────────────────────────────────────────────
+function _showFormError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+function _clearFormError(elId) { _showFormError(elId, ''); }
+
+// ── Skeleton table rows ───────────────────────────────────────────
+function _showTableSkeleton(tbodyId, cols = 4, rows = 3) {
+  const el = document.getElementById(tbodyId);
+  if (!el) return;
+  el.innerHTML = Array(rows).fill(0).map(() =>
+    `<tr class="skel-row">${Array(cols).fill(0).map(() =>
+      `<td><div class="skel-line${cols > 4 ? ' skel-line-sm' : ''}"></div></td>`
+    ).join('')}</tr>`
+  ).join('');
+}
+
+// ── 2-click armed delete ──────────────────────────────────────────
+// First click: arms the button (turns red, shows "Sure?").
+// Second click within 3 s: executes callback.
+// Click anywhere else or timeout: resets.
+function _armDeleteBtn(btn, callback) {
+  if (btn.dataset.armed === '1') {
+    clearTimeout(Number(btn.dataset.armTimer));
+    btn.dataset.armed = '0';
+    callback();
+    return;
+  }
+  btn.dataset.armed = '1';
+  btn.dataset.origHtml = btn.innerHTML;
+  btn.innerHTML = 'Sure?';
+  btn.classList.add('tbl-btn-del-armed');
+
+  const reset = () => {
+    if (btn.dataset.armed !== '1') return;
+    btn.dataset.armed = '0';
+    btn.innerHTML = btn.dataset.origHtml || 'Del';
+    btn.classList.remove('tbl-btn-del-armed');
+    document.removeEventListener('click', outsideClick, true);
+  };
+
+  const outsideClick = (e) => { if (e.target !== btn) { clearTimeout(Number(btn.dataset.armTimer)); reset(); } };
+
+  btn.dataset.armTimer = setTimeout(reset, 3000);
+  setTimeout(() => document.addEventListener('click', outsideClick, { capture: true, once: true }), 0);
+}
+
+/**
+ * Invalidate all analytics page caches so the next visit always re-fetches.
+ * If the user is already on an analytics page, trigger a silent refresh now
+ * so the dashboard stays current without a manual reload.
+ */
+function _invalidateAnalytics(alsoRefresh = true) {
+  ['overview', 'health', 'publishers', 'offers', 'analytics'].forEach(k => _loaded.delete(k));
+  ['publishers:summary', 'offers:summary', 'offers:funnel',
+   'analytics:weekly', 'analytics:monthly', 'analytics:trend'].forEach(k => _loaded.delete(k));
+  if (alsoRefresh) {
+    const p = state.page;
+    if (p === 'overview' || p === 'health') loadPageData(p);
+  }
+}
+
 function noChart(id, msg='No data for the selected range') {
   const el = document.getElementById(id);
   if (!el) return;
@@ -236,6 +339,8 @@ function switchTab(page, tab) {
     b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll(`#page-${page} .tab-content`).forEach(el =>
     el.classList.toggle('active', el.dataset.tab === tab));
+  // Persist sub-tab in URL so refresh/back restores position
+  history.replaceState(null, '', `#${page}:${tab}`);
   loadTabData(page, tab);
 }
 
@@ -271,7 +376,9 @@ function navigateTo(page) {
   document.querySelectorAll('.page').forEach(el =>
     el.classList.toggle('active', el.id === `page-${page}`));
   document.getElementById('tb-page-name').textContent = PAGES[page];
-  history.replaceState(null,'','#'+page);
+  // Include current sub-tab in URL hash so back/refresh restores it
+  const tab = tabState[page] || DEFAULT_TABS[page];
+  history.replaceState(null, '', tab ? `#${page}:${tab}` : `#${page}`);
 
   if (!_loaded.has(page)) loadPageData(page);
 }
@@ -3729,8 +3836,11 @@ async function init() {
   document.getElementById('from-date').addEventListener('change', onDateChange);
   document.getElementById('to-date').addEventListener('change', onDateChange);
 
-  const hash = location.hash.replace('#','');
-  const initPage = PAGES[hash] ? hash : 'overview';
+  const rawHash  = location.hash.replace('#', '');
+  const [hashPage, hashTab] = rawHash.split(':');
+  const initPage = PAGES[hashPage] ? hashPage : 'overview';
+  // Restore sub-tab if it was encoded in the hash
+  if (hashTab && DEFAULT_TABS[initPage] !== undefined) tabState[initPage] = hashTab;
   document.querySelectorAll('.sb-item').forEach(el =>
     el.classList.toggle('active', el.dataset.page === initPage));
   document.querySelectorAll('.page').forEach(el =>
@@ -3773,7 +3883,8 @@ async function init() {
 //  ADMINISTRATION PAGE
 // ══════════════════════════════════════════════════════════════════
 
-let _syncPollTimer = null;
+let _syncPollTimer   = null;
+let _syncWasRunning  = false;  // tracks if a sync was in-flight so we fire invalidation exactly once
 
 async function loadAdministration() {
   // Default sync dates to MTD (only if not already set)
@@ -3825,24 +3936,31 @@ async function loadAdministration() {
 async function startSync() {
   const from = document.getElementById('sync-from-date')?.value;
   const to   = document.getElementById('sync-to-date')?.value;
-  if (!from || !to) { alert('Please set both From and To dates.'); return; }
-  if (from > to)    { alert('From date must be ≤ To date.');       return; }
+  _showFormError('sync-form-error', '');
+  if (!from || !to) { _showFormError('sync-form-error', 'Please set both From and To dates.'); return; }
+  if (from > to)    { _showFormError('sync-form-error', 'From date must be on or before To date.'); return; }
 
   const btn = document.getElementById('btn-start-sync');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Starting…'; }
 
-  const r = await authFetch('/api/sync/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from_date: from, to_date: to }),
-  });
-  const data = await r.json();
+  try {
+    const r    = await authFetch('/api/sync/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_date: from, to_date: to }),
+    });
+    const data = await r.json();
 
-  if (!r.ok) {
-    const msg = data.error === 'no_publishers'
-      ? '⚠ No publishers configured.\n\nGo to Administration → Publishers and add at least one Publisher ID before syncing.'
-      : (data.message || data.error || 'Sync failed to start');
-    alert(msg);
+    if (!r.ok) {
+      const msg = data.error === 'no_publishers'
+        ? 'No publishers configured — go to Administration → Publishers and add at least one publisher before syncing.'
+        : (data.message || data.error || 'Sync failed to start');
+      showToast(msg, 'error', 6000);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Start Sync'; }
+      return;
+    }
+  } catch(e) {
+    showToast('Network error — sync could not start', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Start Sync'; }
     return;
   }
@@ -3860,11 +3978,17 @@ function _syncPoll() {
     .then(s => {
       _renderSyncState(s);
       if (s.running) {
+        _syncWasRunning = true;
         _syncPollTimer = setTimeout(_syncPoll, 2000);
       } else {
         // Re-enable button
         const btn = document.getElementById('btn-start-sync');
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Start Sync'; }
+        // Fire analytics invalidation exactly once when a sync transitions to finished
+        if (s.finished && _syncWasRunning) {
+          _syncWasRunning = false;
+          _invalidateAnalytics();
+        }
       }
     })
     .catch(() => { _syncPollTimer = setTimeout(_syncPoll, 3000); });
@@ -3975,17 +4099,32 @@ function _renderSyncSummary(sm, isError) {
   }
 }
 
-async function clearDatabase() {
-  // Step 1: ask for typed confirmation
-  const token = window.prompt(
-    'This will permanently delete ALL synced data.\n\nType DELETE to confirm:'
-  );
-  if (token === null) return;                   // user clicked Cancel
+function clearDatabase() {
+  // Show the inline confirmation row — no native prompt() needed
+  const confirm = document.getElementById('clear-db-confirm');
+  const input   = document.getElementById('clear-db-token');
+  if (!confirm) return;
+  confirm.classList.add('open');
+  if (input) { input.value = ''; input.focus(); }
+}
+
+function _hideClearConfirm() {
+  const confirm = document.getElementById('clear-db-confirm');
+  if (confirm) confirm.classList.remove('open');
+  const input = document.getElementById('clear-db-token');
+  if (input) input.value = '';
+}
+
+async function confirmClearDatabase() {
+  const input = document.getElementById('clear-db-token');
+  const token = (input?.value || '').trim();
   if (token !== 'DELETE') {
-    alert('Incorrect confirmation — database was NOT cleared.\nYou must type exactly: DELETE');
+    showToast('Type exactly DELETE (all caps) to confirm', 'error');
+    if (input) { input.focus(); input.select(); }
     return;
   }
 
+  _hideClearConfirm();
   const btn = document.getElementById('btn-clear-db');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Clearing…'; }
 
@@ -3997,15 +4136,16 @@ async function clearDatabase() {
     });
     const data = await r.json();
     if (r.ok) {
-      // Hide summary card (stale after clear)
       const sc = document.getElementById('sync-summary-card');
       if (sc) sc.style.display = 'none';
       const pc = document.getElementById('sync-progress-card');
       if (pc) pc.style.display = 'none';
-      alert(`✓ Database cleared — ${data.files_deleted} file(s) deleted.`);
+      showToast(`✓ Database cleared — ${data.files_deleted} file(s) deleted`);
     } else {
-      alert('Error: ' + (data.error || 'Failed to clear database'));
+      showToast('Error: ' + (data.error || 'Failed to clear database'), 'error');
     }
+  } catch(e) {
+    showToast('Network error — database was NOT cleared', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Clear Database'; }
   }
@@ -4024,33 +4164,37 @@ function _pubFormClear() {
   if (en) en.checked = true;
 }
 
-async function loadPubList() {
-  try {
-    const pubs  = await api('/api/management/publishers');
-    const badge = document.getElementById('pub-table-count');
-    if (badge) badge.textContent = pubs.length + ' publishers';
-    api('/api/publishers/map').then(m => { window._partnerMap = m || {}; }).catch(()=>{});
+function _renderPubTable() {
+  const badge = document.getElementById('pub-table-count');
+  if (badge) badge.textContent = _pubList.length + ' publishers';
+  document.getElementById('pub-list-body').innerHTML = _pubList.length ? _pubList.map(p => {
+    const enabled = p.enabled !== false;
+    const statusBadge = enabled
+      ? `<span class="pub-status-badge pub-status-active">Active</span>`
+      : `<span class="pub-status-badge pub-status-paused">Paused</span>`;
+    const toggleLabel = enabled ? 'Pause' : 'Activate';
+    return `
+    <tr class="${enabled ? '' : 'pub-row-paused'}">
+      <td style="font-weight:600;font-size:13px">${esc(p.publisher_id)}</td>
+      <td style="font-weight:500">${esc(p.partner_name || '—')}</td>
+      <td class="td-center">${statusBadge}</td>
+      <td class="td-center" style="white-space:nowrap">
+        <button class="tbl-btn tbl-btn-edit"   onclick="editPub('${p.id}')">Edit</button>
+        <button class="tbl-btn tbl-btn-toggle" onclick="togglePubEnabled('${p.id}', ${enabled})">${toggleLabel}</button>
+        <button class="tbl-btn tbl-btn-del"    onclick="_armDeleteBtn(this, () => _doDeletePub('${p.id}'))">Del</button>
+      </td>
+    </tr>`;
+  }).join('')
+    : `<tr><td colspan="4" class="td-empty"><div class="empty-state"><i class="fas fa-handshake empty-icon"></i><p>No publishers yet — add one above</p></div></td></tr>`;
+  _loaded.delete('administration:sync');
+}
 
-    document.getElementById('pub-list-body').innerHTML = pubs.length ? pubs.map(p => {
-      const enabled = p.enabled !== false;
-      const statusBadge = enabled
-        ? `<span class="pub-status-badge pub-status-active">Active</span>`
-        : `<span class="pub-status-badge pub-status-paused">Paused</span>`;
-      const toggleLabel = enabled ? 'Pause' : 'Activate';
-      return `
-      <tr class="${enabled ? '' : 'pub-row-paused'}">
-        <td style="font-weight:600;font-size:13px">${esc(p.publisher_id)}</td>
-        <td style="font-weight:500">${esc(p.partner_name || '—')}</td>
-        <td class="td-center">${statusBadge}</td>
-        <td class="td-center" style="white-space:nowrap">
-          <button class="tbl-btn tbl-btn-edit"   onclick="editPub('${p.id}')">Edit</button>
-          <button class="tbl-btn tbl-btn-toggle" onclick="togglePubEnabled('${p.id}', ${enabled})">${toggleLabel}</button>
-          <button class="tbl-btn tbl-btn-del"    onclick="deletePub('${p.id}')">Del</button>
-        </td>
-      </tr>`;
-    }).join('')
-      : `<tr><td colspan="4" class="td-empty"><div class="empty-state"><i class="fas fa-handshake empty-icon"></i><p>No publishers yet — add one above</p></div></td></tr>`;
-    _loaded.delete('administration:sync');
+async function loadPubList() {
+  _showTableSkeleton('pub-list-body', 4);
+  try {
+    _pubList = await api('/api/management/publishers');
+    api('/api/publishers/map').then(m => { window._partnerMap = m || {}; }).catch(()=>{});
+    _renderPubTable();
   } catch(e) { console.error('pub list:', e); }
 }
 
@@ -4059,24 +4203,42 @@ async function savePub() {
   const publisher_id = document.getElementById('pub-f-publisher_id')?.value.trim();
   const partner_name = document.getElementById('pub-f-partner_name')?.value.trim();
   const enabled      = document.getElementById('pub-f-enabled')?.checked ?? true;
-  if (!publisher_id) { alert('Publisher ID is required'); return; }
-  if (!partner_name) { alert('Partner Name is required'); return; }
 
-  const payload = { publisher_id, partner_name, enabled };
-  const url     = editId ? `/api/management/publishers/${editId}` : '/api/management/publishers';
-  const method  = editId ? 'PUT' : 'POST';
-  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
-  cancelPubEdit();
-  _loaded.delete('administration:publishers');
-  await loadPubList();
+  _clearFormError('pub-form-error');
+  if (!publisher_id) { _showFormError('pub-form-error', 'Publisher ID is required.'); return; }
+  if (!partner_name) { _showFormError('pub-form-error', 'Partner Name is required.'); return; }
+
+  const btn = document.getElementById('pub-save-btn');
+  _btnBusy(btn, 'Saving…');
+  try {
+    const payload = { publisher_id, partner_name, enabled };
+    const url     = editId ? `/api/management/publishers/${editId}` : '/api/management/publishers';
+    const method  = editId ? 'PUT' : 'POST';
+    const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    if (!r.ok) { const d = await r.json(); _showFormError('pub-form-error', d.error || 'Save failed.'); return; }
+    const saved = await r.json();
+    // Update local cache without a full reload
+    if (editId) {
+      const idx = _pubList.findIndex(x => x.id === editId);
+      if (idx !== -1) _pubList[idx] = { ..._pubList[idx], ...payload, id: editId };
+    } else {
+      _pubList.push(saved);
+    }
+    _renderPubTable();
+    cancelPubEdit();
+    _loaded.delete('administration:publishers');
+    showToast(editId ? '✓ Publisher updated' : '✓ Publisher added');
+    _invalidateAnalytics();
+  } finally {
+    _btnIdle(btn);
+  }
 }
 
-async function editPub(id) {
-  const pubs = await api('/api/management/publishers');
-  const p = pubs.find(x => x.id === id);
+function editPub(id) {
+  // Use local cache — no extra API call needed
+  const p = _pubList.find(x => x.id === id);
   if (!p) return;
-
+  _clearFormError('pub-form-error');
   document.getElementById('pub-edit-id').value            = id;
   document.getElementById('pub-f-publisher_id').value     = p.publisher_id || '';
   document.getElementById('pub-f-partner_name').value     = p.partner_name || '';
@@ -4089,29 +4251,52 @@ async function editPub(id) {
   document.getElementById('pub-form-card').scrollIntoView({ behavior:'smooth' });
 }
 
-// Quick toggle without opening the edit form.
-// Sends a partial PUT — all other fields default to their stored values in the service.
+// Quick toggle — optimistically updates the local cache and re-renders the row
 async function togglePubEnabled(id, currentEnabled) {
-  const r = await authFetch(`/api/management/publishers/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: !currentEnabled }),
-  });
-  if (!r.ok) { const d = await r.json(); alert(d.error || 'Toggle failed'); return; }
-  _loaded.delete('administration:publishers');
-  await loadPubList();
+  // Optimistic update: flip immediately in cache + re-render
+  const p = _pubList.find(x => x.id === id);
+  if (p) { p.enabled = !currentEnabled; _renderPubTable(); }
+  try {
+    const r = await authFetch(`/api/management/publishers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !currentEnabled }),
+    });
+    if (!r.ok) {
+      // Revert on failure
+      if (p) { p.enabled = currentEnabled; _renderPubTable(); }
+      const d = await r.json();
+      showToast(d.error || 'Toggle failed', 'error');
+      return;
+    }
+    showToast(!currentEnabled ? '✓ Publisher activated' : '✓ Publisher paused');
+    _loaded.delete('administration:publishers');
+    _invalidateAnalytics();
+  } catch(e) {
+    if (p) { p.enabled = currentEnabled; _renderPubTable(); }
+    showToast('Network error — toggle may not have saved', 'error');
+  }
 }
 
-async function deletePub(id) {
-  if (!confirm('Delete this publisher? This will NOT delete their game configurations.')) return;
-  await authFetch(`/api/management/publishers/${id}`, { method:'DELETE' });
-  _loaded.delete('administration:publishers');
-  await loadPubList();
+async function _doDeletePub(id) {
+  try {
+    const r = await authFetch(`/api/management/publishers/${id}`, { method:'DELETE' });
+    if (!r.ok) { showToast('Delete failed', 'error'); return; }
+    _pubList = _pubList.filter(x => x.id !== id);
+    _renderPubTable();
+    _loaded.delete('administration:publishers');
+    showToast('✓ Publisher deleted');
+    _invalidateAnalytics();
+  } catch(e) { showToast('Network error — publisher may not have been deleted', 'error'); }
 }
+
+// Keep old name as alias for any lingering calls
+async function deletePub(id) { return _doDeletePub(id); }
 
 function cancelPubEdit() {
   document.getElementById('pub-edit-id').value            = '';
   _pubFormClear();
+  _clearFormError('pub-form-error');
   document.getElementById('pub-form-title').innerHTML     = '<i class="fas fa-plus-circle" style="color:var(--primary)"></i> Add Publisher';
   document.getElementById('pub-save-label').textContent   = 'Add Publisher';
   document.getElementById('pub-cancel-btn').style.display = 'none';
@@ -4417,7 +4602,7 @@ function _gcRenderTable() {
       <td>${_cfgSummary(c)}</td>
       <td class="td-center" style="white-space:nowrap">
         <button class="tbl-btn tbl-btn-edit" onclick="editGameConfig('${c.id}')">Edit</button>
-        <button class="tbl-btn tbl-btn-del"  onclick="deleteGameConfig('${c.id}')">Del</button>
+        <button class="tbl-btn tbl-btn-del"  onclick="deleteGameConfig(this,'${c.id}')">Del</button>
       </td>
     </tr>`).join('')
     : '<tr><td colspan="4" class="td-empty"><div class="empty-state"><i class="fas fa-gamepad empty-icon"></i><p>No game configurations yet</p></div></td></tr>';
@@ -4455,6 +4640,7 @@ function _gcStartFromDiscovered(offer_id) {
 // ── Main load ────────────────────────────────────────────────────
 
 async function loadGamesList() {
+  _showTableSkeleton('gc-list-body', 4);
   try {
     [_gcDiscovered, _gcConfigs] = await Promise.all([
       api('/api/admin/games/discovered'),
@@ -4545,8 +4731,10 @@ async function saveGameConfig() {
   const offer_name = document.getElementById('gc-f-offer_name')?.value.trim();
   const offer_id   = document.getElementById('gc-f-offer_id')?.value.trim();
   const game_type  = document.getElementById('gc-f-game_type')?.value;
-  if (!offer_id)   { alert('Offer ID is required'); return; }
-  if (!game_type)  { alert('Game Type is required'); return; }
+
+  _clearFormError('gc-form-error');
+  if (!offer_id)   { _showFormError('gc-form-error', 'Offer ID is required.'); return; }
+  if (!game_type)  { _showFormError('gc-form-error', 'Game Type is required.'); return; }
 
   const _cleanKpi = rows => rows.filter(r => r.dn !== '').map(r => ({
     dn: parseInt(r.dn, 10), val: parseFloat(r.val) || 0,
@@ -4576,11 +4764,28 @@ async function saveGameConfig() {
 
   const url    = editId ? `/api/admin/games/${editId}` : '/api/admin/games';
   const method = editId ? 'PUT' : 'POST';
-  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
-  cancelGameEdit();
-  _loaded.delete('administration:games');
-  await loadGamesList();
+  const btn    = document.getElementById('gc-save-btn');
+  _btnBusy(btn, 'Saving…');
+  try {
+    const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    if (!r.ok) { const d = await r.json(); _showFormError('gc-form-error', d.error || 'Save failed.'); return; }
+    const saved = await r.json();
+    if (editId) {
+      const idx = _gcConfigs.findIndex(x => x.id === editId);
+      if (idx !== -1) _gcConfigs[idx] = saved;
+    } else {
+      _gcConfigs.push(saved);
+      // Keep discovered list in sync so "Pending" filter reflects new state
+      const disc = _gcDiscovered.find(x => x.offer_id === saved.offer_id);
+      if (disc) disc.configured = true;
+    }
+    cancelGameEdit();
+    _gcRenderTable();
+    _invalidateAnalytics();
+    showToast(editId ? '✓ Game configuration updated' : '✓ Game configured');
+  } finally {
+    _btnIdle(btn);
+  }
 }
 
 async function editGameConfig(id) {
@@ -4635,16 +4840,30 @@ async function editGameConfig(id) {
   document.getElementById('gc-form-card').scrollIntoView({ behavior:'smooth' });
 }
 
-async function deleteGameConfig(id) {
-  if (!confirm('Delete this game configuration?')) return;
-  await authFetch(`/api/admin/games/${id}`, { method:'DELETE' });
-  _loaded.delete('administration:games');
-  await loadGamesList();
+async function deleteGameConfig(btn, id) {
+  // btn is passed as `this` from the table row onclick
+  _armDeleteBtn(btn, async () => {
+    try {
+      const r = await authFetch(`/api/admin/games/${id}`, { method:'DELETE' });
+      if (!r.ok) { showToast('Delete failed', 'error'); return; }
+      // Mark as unconfigured in discovered list so "Pending" filter shows it again
+      const deleted = _gcConfigs.find(x => x.id === id);
+      if (deleted) {
+        const disc = _gcDiscovered.find(x => x.offer_id === deleted.offer_id);
+        if (disc) disc.configured = false;
+      }
+      _gcConfigs = _gcConfigs.filter(x => x.id !== id);
+      _gcRenderTable();
+      _invalidateAnalytics();
+      showToast('✓ Game configuration deleted');
+    } catch(e) { showToast('Network error — game config may not have been deleted', 'error'); }
+  });
 }
 
 function cancelGameEdit() {
   document.getElementById('gc-edit-id').value = '';
   _gcFormClear();
+  _clearFormError('gc-form-error');
   // Hide banner, show picker
   const banner = document.getElementById('gc-game-info-banner');
   if (banner) banner.style.display = 'none';
@@ -4663,24 +4882,29 @@ function _clientFormFields()  { return ['client_name','games','bid','kpi','notes
 function _clientFormVal(key)  { return document.getElementById('client-f-'+key)?.value.trim() || ''; }
 function _clientFormSet(key, val) { const el = document.getElementById('client-f-'+key); if(el) el.value = val ?? ''; }
 
+function _renderClientTable() {
+  const badge = document.getElementById('client-table-count');
+  if (badge) badge.textContent = _clientList.length + ' clients';
+  document.getElementById('client-list-body').innerHTML = _clientList.length ? _clientList.map(c => `
+    <tr>
+      <td style="font-weight:600">${esc(c.client_name)}</td>
+      <td>${esc(c.games||'—')}</td>
+      <td class="td-num">$${fmtN(c.bid)}</td>
+      <td>${esc(c.kpi||'—')}</td>
+      <td class="td-trunc" style="max-width:200px" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+      <td class="td-center">
+        <button class="tbl-btn tbl-btn-edit" onclick="editClient('${c.id}')">Edit</button>
+        <button class="tbl-btn tbl-btn-del"  onclick="_armDeleteBtn(this, () => _doDeleteClient('${c.id}'))">Del</button>
+      </td>
+    </tr>`).join('')
+    : `<tr><td colspan="6" class="td-empty"><div class="empty-state"><i class="fas fa-users empty-icon"></i><p>No clients yet — add one above</p></div></td></tr>`;
+}
+
 async function loadClientList() {
+  _showTableSkeleton('client-list-body', 6);
   try {
-    const clients = await api('/api/management/clients');
-    const badge   = document.getElementById('client-table-count');
-    if (badge) badge.textContent = clients.length + ' clients';
-    document.getElementById('client-list-body').innerHTML = clients.length ? clients.map(c => `
-      <tr>
-        <td style="font-weight:600">${esc(c.client_name)}</td>
-        <td>${esc(c.games||'—')}</td>
-        <td class="td-num">$${fmtN(c.bid)}</td>
-        <td>${esc(c.kpi||'—')}</td>
-        <td class="td-trunc" style="max-width:200px" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
-        <td class="td-center">
-          <button class="tbl-btn tbl-btn-edit" onclick="editClient('${c.id}')">Edit</button>
-          <button class="tbl-btn tbl-btn-del"  onclick="deleteClient('${c.id}')">Delete</button>
-        </td>
-      </tr>`).join('')
-      : `<tr><td colspan="6" class="td-empty"><div class="empty-state"><i class="fas fa-users empty-icon"></i><p>No clients yet — add one above</p></div></td></tr>`;
+    _clientList = await api('/api/management/clients');
+    _renderClientTable();
   } catch(e) { console.error('client list:', e); }
 }
 
@@ -4688,21 +4912,39 @@ async function saveClient() {
   const editId = document.getElementById('client-edit-id')?.value;
   const payload = {};
   _clientFormFields().forEach(k => payload[k] = _clientFormVal(k));
-  if (!payload.client_name) { alert('Client Name is required'); return; }
 
-  const url    = editId ? `/api/management/clients/${editId}` : '/api/management/clients';
-  const method = editId ? 'PUT' : 'POST';
-  const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  if (!r.ok) { const d=await r.json(); alert(d.error||'Save failed'); return; }
-  cancelClientEdit();
-  _loaded.delete('administration:clients');
-  await loadClientList();
+  _clearFormError('client-form-error');
+  if (!payload.client_name) { _showFormError('client-form-error', 'Client Name is required.'); return; }
+
+  const btn = document.getElementById('client-save-btn');
+  _btnBusy(btn, 'Saving…');
+  try {
+    const url    = editId ? `/api/management/clients/${editId}` : '/api/management/clients';
+    const method = editId ? 'PUT' : 'POST';
+    const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    if (!r.ok) { const d = await r.json(); _showFormError('client-form-error', d.error || 'Save failed.'); return; }
+    const saved = await r.json();
+    if (editId) {
+      const idx = _clientList.findIndex(x => x.id === editId);
+      if (idx !== -1) _clientList[idx] = { ..._clientList[idx], ...payload, id: editId };
+    } else {
+      _clientList.push(saved);
+    }
+    _renderClientTable();
+    cancelClientEdit();
+    _loaded.delete('administration:clients');
+    showToast(editId ? '✓ Client updated' : '✓ Client added');
+    _invalidateAnalytics();
+  } finally {
+    _btnIdle(btn);
+  }
 }
 
-async function editClient(id) {
-  const clients = await api('/api/management/clients');
-  const c = clients.find(x => x.id === id);
+function editClient(id) {
+  // Use local cache — no extra API call needed
+  const c = _clientList.find(x => x.id === id);
   if (!c) return;
+  _clearFormError('client-form-error');
   document.getElementById('client-edit-id').value = id;
   _clientFormFields().forEach(k => _clientFormSet(k, c[k] ?? ''));
   document.getElementById('client-form-title').innerHTML = '<i class="fas fa-edit" style="color:var(--primary)"></i> Edit Client';
@@ -4711,16 +4953,25 @@ async function editClient(id) {
   document.getElementById('client-form-card').scrollIntoView({ behavior:'smooth' });
 }
 
-async function deleteClient(id) {
-  if (!confirm('Delete this client?')) return;
-  await authFetch(`/api/management/clients/${id}`, { method:'DELETE' });
-  _loaded.delete('administration:clients');
-  await loadClientList();
+async function _doDeleteClient(id) {
+  try {
+    const r = await authFetch(`/api/management/clients/${id}`, { method:'DELETE' });
+    if (!r.ok) { showToast('Delete failed', 'error'); return; }
+    _clientList = _clientList.filter(x => x.id !== id);
+    _renderClientTable();
+    _loaded.delete('administration:clients');
+    showToast('✓ Client deleted');
+    _invalidateAnalytics();
+  } catch(e) { showToast('Network error — client may not have been deleted', 'error'); }
 }
+
+// Keep old name as alias
+async function deleteClient(id) { return _doDeleteClient(id); }
 
 function cancelClientEdit() {
   document.getElementById('client-edit-id').value = '';
   _clientFormFields().forEach(k => _clientFormSet(k,''));
+  _clearFormError('client-form-error');
   document.getElementById('client-form-title').innerHTML = '<i class="fas fa-plus-circle" style="color:var(--primary)"></i> Add Client';
   document.getElementById('client-save-label').textContent   = 'Add Client';
   document.getElementById('client-cancel-btn').style.display = 'none';
