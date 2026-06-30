@@ -4004,17 +4004,21 @@ function _syncPoll() {
     .then(s => {
       _renderSyncState(s);
       if (s.running) {
+        // Sync is actively running — poll every 2 s
         _syncWasRunning = true;
         _syncPollTimer = setTimeout(_syncPoll, 2000);
-      } else {
-        // Re-enable button
+      } else if (s.finished && _syncWasRunning) {
+        // Our sync completed — re-enable button and invalidate analytics once
         const btn = document.getElementById('btn-start-sync');
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Start Sync'; }
-        // Fire analytics invalidation exactly once when a sync transitions to finished
-        if (s.finished && _syncWasRunning) {
-          _syncWasRunning = false;
-          _invalidateAnalytics('full');  // sync rewrites raw data — invalidate everything
-        }
+        _syncWasRunning = false;
+        _invalidateAnalytics('full');  // sync rewrites raw data — invalidate everything
+      } else {
+        // Not running and not yet "ours" finishing:
+        //   (a) startup race — thread spawned but hasn't set running=true yet
+        //   (b) stale state — _sync_state still holds previous completed sync data
+        // Either way, keep polling until we observe running=true then finished.
+        _syncPollTimer = setTimeout(_syncPoll, 1000);
       }
     })
     .catch(() => { _syncPollTimer = setTimeout(_syncPoll, 3000); });
