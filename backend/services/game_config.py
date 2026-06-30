@@ -26,6 +26,19 @@ _IST_TZ = dt.timezone(dt.timedelta(hours=5, minutes=30))
 _CACHE_KEYS = ("gcfg", "oid_map", "edf")
 
 
+def is_configured(record: dict) -> bool:
+    """Return True iff a game config record is fully configured.
+
+    A record is *not* configured when ``campaign_status == "pending"`` —
+    i.e. it is an auto-seeded stub created by seed_from_sync() that the
+    admin has not yet reviewed.
+
+    This is the single canonical definition used throughout the codebase.
+    Import this function instead of repeating the string literal.
+    """
+    return record.get("campaign_status") != "pending"
+
+
 def _safe_kpi(v, fallback: dict | None = None) -> dict:
     default = fallback if isinstance(fallback, dict) else {"retention": [], "roas": []}
     if not isinstance(v, dict):
@@ -52,8 +65,13 @@ class GameConfigService:
     # ── Read ──────────────────────────────────────────────────────────────────
 
     def list(self) -> list[dict]:
-        """Return all game config records as plain dicts."""
-        return self._repo.get_all_raw()
+        """Return only fully-configured (non-pending) game config records.
+
+        Pending stubs created by seed_from_sync() are intentionally excluded
+        here — they belong in the Unconfigured Games list, not the Configured
+        Games table, so the two sections are mutually exclusive.
+        """
+        return [r for r in self._repo.get_all_raw() if is_configured(r)]
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
@@ -302,15 +320,11 @@ class GameConfigService:
         publisher_count: int = 0,
     ) -> dict:
         """Dashboard summary counts for the Game Configurations admin tab."""
-        configs = self._repo.get_all_raw()
-        offers  = self.scan_discovered_offers(available_dates)
+        real_configs   = self.list()                            # canonical: non-pending only
+        offers         = self.scan_discovered_offers(available_dates)
 
-        # "configured" = has a record AND campaign_status != "pending"
-        configured_ids = {
-            c["offer_id"] for c in configs
-            if c.get("campaign_status") != "pending"
-        }
-        # "pending_count" = discovered offers that are not yet fully configured
+        configured_ids = {c["offer_id"] for c in real_configs}
+        # "pending_count" = discovered offers not yet in configured_ids
         pending_count  = sum(1 for oid in offers if oid not in configured_ids)
 
         def _has_kpi(c):
@@ -322,11 +336,11 @@ class GameConfigService:
         return {
             "publishers_count": publisher_count,
             "discovered_count": len(offers),
-            "configured_count": len(configs),
+            "configured_count": len(real_configs),
             "pending_count":    pending_count,
-            "missing_kpi":      sum(1 for c in configs if not _has_kpi(c)),
-            "missing_funnel":   sum(1 for c in configs if not c.get("expected_funnel")),
-            "missing_margin":   sum(1 for c in configs if c.get("expected_margin") is None),
+            "missing_kpi":      sum(1 for c in real_configs if not _has_kpi(c)),
+            "missing_funnel":   sum(1 for c in real_configs if not c.get("expected_funnel")),
+            "missing_margin":   sum(1 for c in real_configs if c.get("expected_margin") is None),
         }
 
     # ── Internal ──────────────────────────────────────────────────────────────

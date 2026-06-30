@@ -880,21 +880,25 @@ function _funnelHtml(steps, hasExpected, { showMoveButtons = false, showBar = fa
     ? `<div class="funnel-notice"><i class="fas fa-circle-info"></i> Expected funnel not configured for this game. Showing actual funnel only.</div>`
     : '';
 
-  // Scenario A: Step + Goal + Users + Actual% + Exp% + Deviation + TTC + ExpTime [+ Bar]
-  // Scenario B: Step + Goal + Users + Actual% + TTC [+ Bar]
-  const colCount = (hasExpected ? 8 : 5) + (showBar ? 1 : 0);
+  // Columns:
+  // Scenario B (no expected): Step Goal Payout TotalCost Users Actual% TTC          = 7
+  // Scenario A (expected):    Step Goal Payout TotalCost Users Actual% Exp% Dev TTC ExpTime = 10
+  // + optional Bar column
+  const colCount = (hasExpected ? 10 : 7) + (showBar ? 1 : 0);
 
   let theadHtml = '<tr>';
   theadHtml += `<th class="th-center" style="width:${showMoveButtons ? 80 : 44}px">Step</th>`;
   theadHtml += '<th>Goal</th>';
-  theadHtml += '<th class="th-num">Users</th>';
+  theadHtml += '<th class="th-num">Payout</th>';
+  theadHtml += '<th class="th-num">Total Cost</th>';
+  theadHtml += '<th class="th-center">Users</th>';
   theadHtml += '<th class="th-num">Actual %</th>';
   if (hasExpected) {
     theadHtml += '<th class="th-num">Expected %</th>';
     theadHtml += '<th class="th-num">Deviation</th>';
   }
-  theadHtml += '<th class="th-num">Time To Complete</th>';
-  if (hasExpected) theadHtml += '<th class="th-num">Expected Time</th>';
+  theadHtml += '<th class="th-center">Time To Complete</th>';
+  if (hasExpected) theadHtml += '<th class="th-center">Expected Time</th>';
   if (showBar) theadHtml += '<th>Progress</th>';
   theadHtml += '</tr>';
 
@@ -921,6 +925,16 @@ function _funnelHtml(steps, hasExpected, { showMoveButtons = false, showBar = fa
     const goalBadge = isFirst ? '<span class="funnel-top-badge">Base</span>'
                     : isLast  ? '<span class="funnel-last-badge">Last</span>' : '';
 
+    // Payout cell
+    const payoutCell = s.payout != null
+      ? `<td class="td-num td-mono" style="color:var(--txt-muted)">$${fmtN(s.payout)}</td>`
+      : `<td class="td-num" style="color:var(--txt-muted)">${blank}</td>`;
+
+    // Total Cost cell
+    const totalCostCell = s.total_cost != null
+      ? `<td class="td-num td-mono" style="font-weight:600;color:var(--red)">$${fmtN(s.total_cost)}</td>`
+      : `<td class="td-num" style="color:var(--txt-muted)">${blank}</td>`;
+
     // Expected % cell
     const expCell = hasExpected
       ? (isFirst
@@ -941,9 +955,9 @@ function _funnelHtml(steps, hasExpected, { showMoveButtons = false, showBar = fa
       }
     }
 
-    // Expected Time cell
+    // Expected Time cell (center aligned)
     const expTimeCell = hasExpected
-      ? `<td class="td-num" style="font-size:12px;color:var(--txt-muted)">${isFirst ? '—' : (s.expected_time || '—')}</td>`
+      ? `<td class="td-center" style="font-size:12px;color:var(--txt-muted)">${isFirst ? '—' : (s.expected_time || '—')}</td>`
       : '';
 
     // Bar cell
@@ -956,10 +970,11 @@ function _funnelHtml(steps, hasExpected, { showMoveButtons = false, showBar = fa
     return `<tr>
       <td class="td-center">${stepCell}</td>
       <td style="font-weight:${isFirst ? 700 : 500}">${esc(s.goal)}${goalBadge}</td>
-      <td class="td-num td-mono" style="font-weight:600">${fmtI(s.count)}</td>
+      ${payoutCell}${totalCostCell}
+      <td class="td-center td-mono" style="font-weight:600">${fmtI(s.count)}</td>
       <td class="td-num td-mono" style="font-weight:600;color:${isFirst ? C.blue : '#334155'}">${fmtN(s.funnel_pct)}%</td>
       ${expCell}${devCell}
-      <td class="td-num" style="font-size:12px;color:var(--txt-muted)">${s.time_to_complete || '—'}</td>
+      <td class="td-center" style="font-size:12px;color:var(--txt-muted)">${s.time_to_complete || '—'}</td>
       ${expTimeCell}${barCell}
     </tr>`;
   }).join('');
@@ -1274,7 +1289,7 @@ function _poRenderFunnel(steps, summary, hasExpected = false) {
 
   if (!steps.length) {
     if (kpisEl) kpisEl.innerHTML = '';
-    bodyEl.innerHTML = `<tr><td colspan="${hasExpected ? 8 : 5}" class="td-empty">
+    bodyEl.innerHTML = `<tr><td colspan="${hasExpected ? 10 : 7}" class="td-empty">
       <div class="empty-state"><i class="fas fa-inbox empty-icon"></i>
         <p>No funnel data for this publisher+offer in the selected range.</p>
       </div></td></tr>`;
@@ -3223,6 +3238,8 @@ function renderFunnelTable(steps, hasExpected = false) {
     expected_pct: s.expected_pct ?? null, deviation_pct: s.deviation_pct ?? null,
     expected_time: s.expected_time ?? null,
     funnel_pct: s.funnel_pct ?? null,
+    payout:     s.payout     ?? null,
+    total_cost: s.total_cost ?? null,
   }));
   _drawFunnelTable();
 }
@@ -3242,6 +3259,8 @@ function _drawFunnelTable() {
     deviation_pct: s.deviation_pct ?? null,
     expected_time: s.expected_time ?? null,
     time_to_complete: s.time_to_complete || null,
+    payout:     s.payout     ?? null,
+    total_cost: s.total_cost ?? null,
   }));
 
   const { noticeHtml, theadHtml, tbodyHtml } = _funnelHtml(recalc, hasExpected, { showMoveButtons: true, showBar: true });
@@ -3913,14 +3932,18 @@ let _syncPollTimer   = null;
 let _syncWasRunning  = false;  // tracks if a sync was in-flight so we fire invalidation exactly once
 
 async function loadAdministration() {
-  // Default sync dates to MTD (only if not already set)
+  // Reset sync dates to today on every navigation to this page.
+  // Exception: if a sync is currently running in this session (_syncWasRunning),
+  // leave the user's selected dates untouched.
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const fmt = d => d.toISOString().slice(0,10);
+  const todayStr = fmt(today);
   const sfEl = document.getElementById('sync-from-date');
   const stEl = document.getElementById('sync-to-date');
-  if (sfEl && !sfEl.value) sfEl.value = fmt(firstOfMonth);
-  if (stEl && !stEl.value) stEl.value = fmt(today);
+  if (!_syncWasRunning) {
+    if (sfEl) sfEl.value = todayStr;
+    if (stEl) stEl.value = todayStr;
+  }
 
   // Load sync publisher preview
   try {
@@ -4340,7 +4363,7 @@ function cancelPubEdit() {
 let _gcGoals     = [];   // [{name:'', bid:null}]
 let _gcPubKpi    = { retention: [], roas: [] };
 let _gcClientKpi = { retention: [], roas: [] };
-let _gcFunnel    = [];   // [{goal:'', pct:'', time_val:'', time_unit:'Days'}]
+let _gcFunnel    = [];   // [{goal:'', pct:'', time_val:'', time_unit:'Days', payout:''}]
 let _gcFilter    = 'all';
 let _gcDiscovered = [];  // cached from /api/admin/games/discovered
 let _gcConfigs    = [];  // cached from /api/admin/games
@@ -4431,6 +4454,10 @@ function _gcRenderFunnel() {
           ${['Minutes','Hours','Days'].map(u => `<option value="${u}"${r.time_unit===u?' selected':''}>${u}</option>`).join('')}
         </select>
       </div>
+      <input class="pub-funnel-pct gc-funnel-payout" type="number" step="0.01" min="0" placeholder="0.00"
+        value="${r.payout !== '' && r.payout != null ? r.payout : ''}"
+        oninput="_gcFunnelChange(${i},'payout',this.value)"
+        title="Payout ($) for this goal">
       <button class="pub-row-del" title="Remove" onclick="_gcFunnelRemove(${i})">
         <i class="fas fa-times"></i>
       </button>
@@ -4466,11 +4493,299 @@ function _gcKpiChange(side, type, i, field, val) {
 }
 
 function _gcFunnelAdd() {
-  _gcFunnel.push({ goal: '', pct: '', time_val: '', time_unit: 'Days' });
+  _gcFunnel.push({ goal: '', pct: '', time_val: '', time_unit: 'Days', payout: '' });
   _gcRenderFunnel();
 }
 function _gcFunnelRemove(i) { _gcFunnel.splice(i, 1); _gcRenderFunnel(); }
 function _gcFunnelChange(i, field, val) { _gcFunnel[i][field] = val; }
+
+// ── CSV Import ────────────────────────────────────────────────────
+
+/**
+ * Normalise a raw CSV header to a canonical column key.
+ * Strips punctuation/spaces/underscores then matches known aliases
+ * so exports from spreadsheets with pretty headers still work.
+ *
+ * Accepted aliases:
+ *   goal              → 'goal'
+ *   expected_percent / Expected % / Expected Percent → 'expected_percent'
+ *   time_minutes / Time / Minutes / Min              → 'time_minutes'
+ */
+function _gcNormalizeHeader(raw) {
+  const s = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return ({
+    goal:            'goal',
+    expectedpercent: 'expected_percent',
+    expected:        'expected_percent',
+    timeminutes:     'time_minutes',
+    time:            'time_minutes',
+    minutes:         'time_minutes',
+    min:             'time_minutes',
+  })[s] || s;
+}
+
+/** Open the hidden file picker. */
+function _gcFunnelUploadCsv() {
+  const inp = document.getElementById('gc-funnel-csv-input');
+  if (inp) { inp.value = ''; inp.click(); }
+}
+
+/** Called when the user selects a file. */
+function _gcFunnelCsvSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => _gcFunnelHandleCsvText(e.target.result);
+  reader.readAsText(file);
+}
+
+/**
+ * Parse a CSV string.  Returns:
+ *   { allRows, hasErrors, fatalError? }
+ *
+ * allRows: [{ rowNum, goal, pctRaw, timeRaw, pct, timeVal, valid, colErrors }]
+ *   colErrors: [{ col, msg }] — one entry per failing field
+ *
+ * Rules:
+ *   - Blank / all-whitespace lines are skipped (including duplicate blanks).
+ *   - All values are trimmed.
+ *   - Headers are normalised via _gcNormalizeHeader().
+ *   - Partial failures do NOT produce partial rows — a row is either fully
+ *     valid (goes into the import set) or fully invalid (blocked).
+ *   - Import is all-or-nothing: hasErrors=true blocks the confirm button.
+ */
+function _gcFunnelParseCsv(text) {
+  const lines = text.split(/\r?\n/);
+
+  // Skip leading blank lines to find the header
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) {
+    return { allRows: [], hasErrors: true, fatalError: 'File is empty.' };
+  }
+
+  const header      = lines[headerIdx].split(',').map(_gcNormalizeHeader);
+  const goalIdx     = header.indexOf('goal');
+  const pctIdx      = header.indexOf('expected_percent');
+  const timeIdx     = header.indexOf('time_minutes');
+  const payoutIdx   = header.indexOf('payout');
+
+  const missing = [];
+  if (goalIdx   === -1) missing.push('goal');
+  if (pctIdx    === -1) missing.push('expected_percent');
+  if (timeIdx   === -1) missing.push('time_minutes');
+  if (payoutIdx === -1) missing.push('payout');
+  if (missing.length) {
+    return {
+      allRows: [], hasErrors: true,
+      fatalError: `Missing required column(s): ${missing.join(', ')}. ` +
+        `Required: goal, expected_percent, time_minutes, payout`,
+    };
+  }
+
+  const allRows  = [];
+  let   hasErrors = false;
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const raw = lines[i].trim();
+    if (!raw) continue; // skip blank rows (including duplicate blanks)
+
+    const cols       = raw.split(',').map(c => c.trim());
+    const goal       = cols[goalIdx]    ?? '';
+    const pctRaw     = cols[pctIdx]     ?? '';
+    const timeRaw    = cols[timeIdx]    ?? '';
+    const payoutRaw  = cols[payoutIdx]  ?? '';
+    const rowNum     = i + 1; // 1-based (row 1 = header line)
+    const colErrors  = [];
+
+    // Validate goal
+    if (!goal) colErrors.push({ col: 'goal', msg: 'cannot be empty' });
+
+    // Validate expected_percent
+    let pct = NaN;
+    if (!pctRaw) {
+      colErrors.push({ col: 'expected_percent', msg: 'is required' });
+    } else {
+      pct = parseFloat(pctRaw);
+      if (isNaN(pct))                 colErrors.push({ col: 'expected_percent', msg: 'must be a number' });
+      else if (pct < 0 || pct > 100) colErrors.push({ col: 'expected_percent', msg: 'must be between 0 and 100' });
+    }
+
+    // Validate time_minutes
+    let timeVal = NaN;
+    if (!timeRaw) {
+      colErrors.push({ col: 'time_minutes', msg: 'is required' });
+    } else {
+      timeVal = parseFloat(timeRaw);
+      if (isNaN(timeVal)) colErrors.push({ col: 'time_minutes', msg: 'must be a number' });
+    }
+
+    // Validate payout
+    let payoutVal = NaN;
+    if (!payoutRaw) {
+      colErrors.push({ col: 'payout', msg: 'is required' });
+    } else {
+      payoutVal = parseFloat(payoutRaw);
+      if (isNaN(payoutVal))  colErrors.push({ col: 'payout', msg: 'must be a number' });
+      else if (payoutVal < 0) colErrors.push({ col: 'payout', msg: 'must be ≥ 0' });
+    }
+
+    const valid = colErrors.length === 0;
+    if (!valid) hasErrors = true;
+    allRows.push({ rowNum, goal, pctRaw, timeRaw, payoutRaw, pct, timeVal, payoutVal, valid, colErrors });
+  }
+
+  return { allRows, hasErrors };
+}
+
+/** Parse the CSV text then show the preview modal. */
+function _gcFunnelHandleCsvText(text) {
+  const modal      = document.getElementById('gc-funnel-import-modal');
+  const tableBody  = document.getElementById('gc-funnel-import-table');
+  const statusEl   = document.getElementById('gc-funnel-import-status');
+  const confirmBtn = document.getElementById('gc-funnel-import-confirm');
+  if (!modal) return;
+
+  confirmBtn.disabled        = true;
+  confirmBtn.dataset.pending = '';
+
+  const { allRows, hasErrors, fatalError } = _gcFunnelParseCsv(text);
+
+  // ── Fatal: empty file or missing columns ──────────────────────────
+  if (fatalError) {
+    statusEl.innerHTML  = `<div class="import-msg import-msg-err">
+      <i class="fas fa-circle-exclamation"></i> ${esc(fatalError)}
+    </div>`;
+    tableBody.innerHTML = '';
+    modal.style.display = 'flex';
+    return;
+  }
+
+  // ── No data rows at all ───────────────────────────────────────────
+  if (!allRows.length) {
+    statusEl.innerHTML  = `<div class="import-msg import-msg-err">
+      <i class="fas fa-circle-exclamation"></i> No data rows found in file.
+    </div>`;
+    tableBody.innerHTML = '';
+    modal.style.display = 'flex';
+    return;
+  }
+
+  const errorCount = allRows.filter(r => !r.valid).length;
+  const validCount = allRows.filter(r =>  r.valid).length;
+
+  // ── Build combined table: ALL rows (valid + invalid) in order ─────
+  tableBody.innerHTML = allRows.map(r => {
+    // Data row — red background if invalid
+    const dataRow = r.valid
+      ? `<tr>
+           <td class="td-num">${r.rowNum}</td>
+           <td>${esc(r.goal)}</td>
+           <td class="td-num">${r.pct}</td>
+           <td class="td-num">${r.timeVal}</td>
+           <td class="td-num">$${fmtN(r.payoutVal)}</td>
+         </tr>`
+      : `<tr class="import-row-err">
+           <td class="td-num">${r.rowNum}</td>
+           <td>${esc(r.goal || '—')}</td>
+           <td class="td-num td-raw">${esc(r.pctRaw    || '—')}</td>
+           <td class="td-num td-raw">${esc(r.timeRaw   || '—')}</td>
+           <td class="td-num td-raw">${esc(r.payoutRaw || '—')}</td>
+         </tr>`;
+
+    // Per-column error sub-rows (only for invalid rows)
+    const errSubRows = r.colErrors.map(e =>
+      `<tr class="import-err-sub">
+         <td></td>
+         <td class="import-err-col">${esc(e.col)}</td>
+         <td colspan="3" class="import-err-msg">
+           <i class="fas fa-triangle-exclamation"></i> ${esc(e.msg)}
+         </td>
+       </tr>`).join('');
+
+    return dataRow + errSubRows;
+  }).join('');
+
+  // ── Status banners ────────────────────────────────────────────────
+  const existingCount = _gcFunnel.filter(r => r.goal.trim()).length;
+  let statusHtml = '';
+
+  if (hasErrors) {
+    statusHtml = `<div class="import-msg import-msg-err">
+      <i class="fas fa-circle-exclamation"></i>
+      ${errorCount} row${errorCount !== 1 ? 's have' : ' has'} validation errors.
+      ${validCount ? ` ${validCount} row${validCount !== 1 ? 's are' : ' is'} valid.` : ''}
+      Fix all errors and re-upload — import is blocked until every row passes.
+    </div>`;
+  } else {
+    // All rows valid — arm the confirm button
+    confirmBtn.disabled        = false;
+    confirmBtn.dataset.pending = JSON.stringify(
+      allRows.map(r => ({ goal: r.goal, pct: r.pct, timeVal: r.timeVal, payoutVal: r.payoutVal }))
+    );
+
+    statusHtml = `<div class="import-msg import-msg-ok">
+      <i class="fas fa-circle-check"></i>
+      ${validCount} step${validCount !== 1 ? 's' : ''} ready to import.
+    </div>`;
+
+    // Warn if existing steps will be overwritten (req 1)
+    if (existingCount > 0) {
+      statusHtml += `<div class="import-msg import-msg-warn">
+        <i class="fas fa-triangle-exclamation"></i>
+        This will replace your existing ${existingCount} step${existingCount !== 1 ? 's' : ''}.
+        Click <strong>Import</strong> to confirm.
+      </div>`;
+    }
+  }
+
+  statusEl.innerHTML  = statusHtml;
+  modal.style.display = 'flex';
+}
+
+/** Replace _gcFunnel with the imported rows and close the modal. */
+function _gcFunnelConfirmImport() {
+  const btn  = document.getElementById('gc-funnel-import-confirm');
+  const rows = JSON.parse(btn.dataset.pending || '[]');
+  if (!rows.length) return;
+
+  // time_val stays as minutes; user can change the unit manually afterwards
+  _gcFunnel = rows.map(r => ({
+    goal:      r.goal,
+    pct:       String(r.pct),
+    time_val:  String(r.timeVal),
+    time_unit: 'Minutes',
+    payout:    String(r.payoutVal ?? 0),
+  }));
+  _gcRenderFunnel();
+  _gcFunnelCloseImport();
+  showToast(`Imported ${rows.length} funnel step${rows.length !== 1 ? 's' : ''}.`);
+}
+
+/** Close the import preview modal without importing. */
+function _gcFunnelCloseImport() {
+  const modal = document.getElementById('gc-funnel-import-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+/** Trigger a browser download of the sample CSV. */
+function _gcFunnelDownloadSample() {
+  const csv = [
+    'goal,expected_percent,time_minutes,payout',
+    '1,100,0,2',
+    'reached_level_2,100,2,3',
+    'reached_level_5,98.33,4,5',
+    'reached_level_10,85,10,8',
+    'reached_level_20,60,30,12',
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'funnel_sample.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function _gcGameTypeChange(val) {
   // For CPI: auto-set a single goal '1' if no goals present yet
@@ -4778,9 +5093,10 @@ async function saveGameConfig() {
     .filter(r => r.goal.trim())
     .map(r => ({
       goal:      r.goal.trim(),
-      pct:       parseFloat(r.pct)  || 0,
+      pct:       parseFloat(r.pct)     || 0,
       time_val:  parseFloat(r.time_val) || 0,
       time_unit: r.time_unit || 'Days',
+      payout:    r.payout !== '' && r.payout != null ? parseFloat(r.payout) || 0 : 0,
     }));
 
   const em = document.getElementById('gc-f-expected_margin')?.value;
@@ -4857,6 +5173,7 @@ async function editGameConfig(id) {
         pct:       r.pct  ?? '',
         time_val:  r.time_val  ?? (r.days ?? ''),
         time_unit: r.time_unit ?? 'Days',
+        payout:    r.payout != null ? r.payout : '',
       }))
     : [];
 

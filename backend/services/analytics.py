@@ -16,6 +16,7 @@ import pandas as pd
 
 from backend.aggregator import load_summary
 from backend.repositories.cache import CacheProvider
+from backend.services.game_config import is_configured as _is_configured
 from backend.storage import available_dates as _storage_available_dates
 from backend.storage import load_date_range as _storage_load_date_range
 from backend.utils import ist_today
@@ -107,7 +108,7 @@ class AnalyticsService:
             str(cfg.get("offer_id", "")).strip()
             for cfg in self.get_game_configs()
             if str(cfg.get("offer_id", "")).strip()
-            and cfg.get("campaign_status") != "pending"
+            and _is_configured(cfg)
         )
 
     def get_configured_offer_names(self) -> frozenset[str]:

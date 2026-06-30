@@ -69,14 +69,26 @@ class FunnelService:
         if raw.empty:
             return _EMPTY
 
-        # ── Look up expected funnel (only when exactly one offer) ─────────────
+        # ── Look up expected funnel + payout map (single offer only) ────────────
+        # Payout is read directly from each expected_funnel step's `payout` field.
+        # Existing steps without `payout` default to 0.0 — no migration required.
         expected_steps: list[dict] = []
+        payout_map:    dict[str, float] = {}   # goal_name → payout from expected funnel
         if len(offer_names) == 1:
             for cfg in self._get_game_configs():
                 if cfg.get("offer_name") == offer_names[0]:
                     ef = cfg.get("expected_funnel") or []
                     if ef:
                         expected_steps = ef
+                    for step in ef:
+                        goal_name = (step.get("goal") or "").strip()
+                        if not goal_name:
+                            continue
+                        raw_payout = step.get("payout")
+                        try:
+                            payout_map[goal_name] = float(raw_payout) if raw_payout is not None else 0.0
+                        except (TypeError, ValueError):
+                            payout_map[goal_name] = 0.0
                     break
 
         has_expected = bool(expected_steps)
@@ -164,6 +176,12 @@ class FunnelService:
         ttc = self._funnel_time_to_complete(raw_for_ttc, step_names, _p2_base_cids)
         for s in funnel_steps:
             s["time_to_complete"] = ttc.get(s["goal"])
+
+        # ── Payout + total cost per step ──────────────────────────────────────
+        for s in funnel_steps:
+            bid = payout_map.get(s["goal"])
+            s["payout"]     = round(bid, 4) if bid is not None else None
+            s["total_cost"] = round(s["count"] * bid, 2) if bid is not None else None
 
         total_users   = funnel_steps[0]["count"]
         final_count   = funnel_steps[-1]["count"]
@@ -325,16 +343,24 @@ class FunnelService:
         return result
 
     def _get_game_configs(self) -> list:
-        """Read game configs from shared cache (same TTL and key as AnalyticsService)."""
+        """Read game configs from shared cache (same TTL and key as AnalyticsService).
+
+        The "gcfg" key must always contain only non-pending (fully configured)
+        records, matching what GameConfigService.list() / AnalyticsService writes.
+        Using get_all_raw() here would poison the shared key with pending stubs,
+        causing AnalyticsService to treat unconfigured offers as configured on the
+        next cache hit.
+        """
         configs = self._cache.get("gcfg")
         if configs is None:
             # Fallback: re-build from storage (rare — only if cache is cold)
-            from backend.storage import get_provider as _get_storage
             from backend.repositories.factory import RepositoryFactory
             from backend.config import REPO_BACKEND
             try:
+                from backend.services.game_config import is_configured as _is_configured
                 repo = RepositoryFactory.create_game_config_repo(REPO_BACKEND)
-                configs = repo.get_all_raw()
+                # Use the canonical predicate — single definition lives in GameConfigService
+                configs = [r for r in repo.get_all_raw() if _is_configured(r)]
                 self._cache.set("gcfg", configs, ttl=_CACHE_TTL_CFG)
             except Exception:
                 configs = []

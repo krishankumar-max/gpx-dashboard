@@ -1890,16 +1890,65 @@
               <span class="pub-section-num">5</span>
               <span class="pub-section-lbl">Expected Funnel</span>
             </div>
+
+            <!-- CSV import toolbar -->
+            <div class="gc-funnel-toolbar">
+              <input type="file" id="gc-funnel-csv-input" accept=".csv" style="display:none"
+                     onchange="_gcFunnelCsvSelected(this)">
+              <button class="pub-add-btn pub-add-btn-sm" onclick="_gcFunnelUploadCsv()">
+                <i class="fas fa-upload"></i> Upload CSV
+              </button>
+              <a class="gc-funnel-sample-link" href="#" onclick="_gcFunnelDownloadSample();return false;">
+                Download Sample CSV
+              </a>
+            </div>
+
             <div class="pub-funnel-header">
               <span class="pub-funnel-col-lbl">Goal</span>
               <span class="pub-funnel-col-lbl pub-funnel-col-num">Expected %</span>
               <span class="pub-funnel-col-lbl pub-funnel-col-num" style="width:130px">Time</span>
+              <span class="pub-funnel-col-lbl pub-funnel-col-num" style="width:80px">Payout ($)</span>
               <span style="width:26px"></span>
             </div>
             <div id="gc-funnel-list"></div>
             <button class="pub-add-btn" onclick="_gcFunnelAdd()">
               <i class="fas fa-plus"></i> Add Step
             </button>
+          </div>
+
+          <!-- Funnel CSV import preview modal (fixed overlay, portal-style) -->
+          <div id="gc-funnel-import-modal" class="gc-import-overlay" style="display:none"
+               onclick="if(event.target===this)_gcFunnelCloseImport()">
+            <div class="gc-import-card">
+              <div class="gc-import-header">
+                <span class="gc-import-title"><i class="fas fa-file-csv"></i> Import Funnel Steps</span>
+                <button class="gc-import-close" onclick="_gcFunnelCloseImport()" title="Close">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div id="gc-funnel-import-status" class="gc-import-status"></div>
+              <div class="gc-import-table-wrap">
+                <table class="data-table gc-import-preview-table">
+                  <thead>
+                    <tr>
+                      <th class="th-num">#</th>
+                      <th>Goal</th>
+                      <th class="th-right">Expected %</th>
+                      <th class="th-right">Time (min)</th>
+                      <th class="th-right">Payout ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="gc-funnel-import-table"></tbody>
+                </table>
+              </div>
+              <div class="gc-import-actions">
+                <button class="btn-ghost" onclick="_gcFunnelCloseImport()">Cancel</button>
+                <button id="gc-funnel-import-confirm" class="btn-primary"
+                        onclick="_gcFunnelConfirmImport()" disabled>
+                  <i class="fas fa-check"></i> Import
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- 6. Performance Target -->
