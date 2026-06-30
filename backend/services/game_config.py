@@ -35,8 +35,37 @@ def is_configured(record: dict) -> bool:
 
     This is the single canonical definition used throughout the codebase.
     Import this function instead of repeating the string literal.
+
+    Note: is_configured() answers only "has the admin touched this campaign?"
+    It does NOT check payable_goals or bids. Configured campaigns without
+    payable goals remain visible in Administration so the admin can finish
+    setup. Use is_revenue_eligible() for all revenue calculations and
+    business dashboard filtering.
     """
     return record.get("campaign_status") != "pending"
+
+
+def is_revenue_eligible(record: dict) -> bool:
+    """Return True iff a game config record is eligible to contribute revenue.
+
+    A record is revenue eligible only when ALL of the following hold:
+      1. campaign_status != "pending"     (same gate as is_configured)
+      2. payable_goals is a non-empty list
+      3. at least one payable goal has bid > 0
+
+    This is the canonical predicate for all business dashboard filtering and
+    revenue calculations.  is_configured() is used solely for Administration
+    visibility; is_revenue_eligible() is used everywhere else.
+    """
+    if record.get("campaign_status") == "pending":
+        return False
+    pgs = record.get("payable_goals") or []
+    if not isinstance(pgs, list) or not pgs:
+        return False
+    return any(
+        isinstance(pg, dict) and float(pg.get("bid") or 0) > 0
+        for pg in pgs
+    )
 
 
 def _safe_kpi(v, fallback: dict | None = None) -> dict:

@@ -17,6 +17,7 @@ import pandas as pd
 from backend.aggregator import load_summary
 from backend.repositories.cache import CacheProvider
 from backend.services.game_config import is_configured as _is_configured
+from backend.services.game_config import is_revenue_eligible as _is_revenue_eligible
 from backend.storage import available_dates as _storage_available_dates
 from backend.storage import load_date_range as _storage_load_date_range
 from backend.utils import ist_today
@@ -116,6 +117,30 @@ class AnalyticsService:
         conf_ids = self.get_configured_offer_ids()
         return frozenset(name for name, oid in oid_map.items() if oid in conf_ids)
 
+    def get_revenue_eligible_offer_ids(self) -> frozenset[str]:
+        """
+        Return offer_ids for game configs that are revenue eligible.
+
+        Stricter than get_configured_offer_ids(): also requires non-empty
+        payable_goals with at least one bid > 0.  Used by get_enriched_summary()
+        and funnel_data() — i.e. every business dashboard view.
+
+        get_configured_offer_ids() (the looser predicate) continues to serve
+        raw_data(), export_csv(), and get_offer_id_map() so that Administration
+        and the raw-data inspection table are not affected.
+        """
+        return frozenset(
+            str(cfg.get("offer_id", "")).strip()
+            for cfg in self.get_game_configs()
+            if str(cfg.get("offer_id", "")).strip()
+            and _is_revenue_eligible(cfg)
+        )
+
+    def get_revenue_eligible_offer_names(self) -> frozenset[str]:
+        oid_map      = self.get_offer_id_map()
+        elig_ids     = self.get_revenue_eligible_offer_ids()
+        return frozenset(name for name, oid in oid_map.items() if oid in elig_ids)
+
     def _build_config_revenue_map(self) -> dict[str, dict[str, float]]:
         result: dict[str, dict[str, float]] = {}
         for cfg in self.get_game_configs():
@@ -140,8 +165,20 @@ class AnalyticsService:
 
     def get_enriched_summary(self) -> pd.DataFrame:
         """
-        Return daily_summary filtered to configured offers, with config revenue applied.
-        Cached at _CACHE_TTL_CFG (60 s).
+        Return daily_summary filtered to revenue-eligible offers, with config
+        revenue applied.  Cached at _CACHE_TTL_CFG (60 s).
+
+        Revenue rule: Revenue = Goal Conversions × Configured Bid.
+        Sapphyre revenue is never read or used here.  If a goal has no
+        configured bid the lookup returns 0.0 and revenue for that row is $0.
+        There is no fallback.
+
+        Visibility rule: only revenue-eligible offers appear in the result.
+        Revenue-eligible = campaign_status != "pending"
+                           AND payable_goals non-empty
+                           AND at least one bid > 0.
+        Configured-but-not-eligible offers remain visible in Administration
+        (via GameConfigService.list()) but are excluded from all analytics.
         """
         cached = self._cache.get("edf")
         if cached is not None:
@@ -153,7 +190,6 @@ class AnalyticsService:
         cfg_map = self._build_config_revenue_map()
 
         df["offer_id"] = df["offerName"].map(oid_map).fillna("").astype(str)
-        df["sapphyre_revenue"] = df["revenue"].astype(float)
 
         _bid_lookup: dict[tuple, float] = {}
         for _oid, _goal_bids in cfg_map.items():
@@ -169,18 +205,17 @@ class AnalyticsService:
         else:
             df["config_revenue"] = 0.0
 
-        _configured_ids: frozenset = frozenset(cfg_map.keys())
-        df["revenue_source"] = df["offer_id"].map(
-            lambda oid: "config" if oid in _configured_ids else "sapphyre"
-        )
-        _config_mask = df["revenue_source"] == "config"
-        df["revenue"] = df["sapphyre_revenue"]
-        df.loc[_config_mask, "revenue"] = df.loc[_config_mask, "config_revenue"]
+        # Revenue is always config_revenue (conversions × bid).
+        # No Sapphyre fallback. No revenue_source branching.
+        df["revenue"] = df["config_revenue"]
+        # All revenue in the enriched summary is config-based; pin the column
+        # to a constant so downstream API methods that expose it remain valid.
+        df["revenue_source"] = "config"
 
-        # Always filter to configured offers. If no game configs exist, returns
-        # an empty DataFrame — dashboards must not display raw/unconfigured offers.
-        _conf_ids = self.get_configured_offer_ids()
-        df = df[df["offer_id"].isin(_conf_ids)]
+        # Filter to revenue-eligible offers only. If none exist, returns an
+        # empty DataFrame — dashboards must not display non-eligible offers.
+        _elig_ids = self.get_revenue_eligible_offer_ids()
+        df = df[df["offer_id"].isin(_elig_ids)]
 
         self._cache.set("edf", df, ttl=_CACHE_TTL_CFG)
         return df
@@ -1525,9 +1560,11 @@ class AnalyticsService:
         from_date: dt.date, to_date: dt.date,
         partners: list[str],
     ) -> dict:
-        conf_names = self.get_configured_offer_names()
-        if conf_names and offers:
-            offers = [o for o in offers if o in conf_names]
+        # Funnel is a business dashboard view — restrict to revenue-eligible
+        # offers only, consistent with every other analytics method.
+        elig_names = self.get_revenue_eligible_offer_names()
+        if elig_names and offers:
+            offers = [o for o in offers if o in elig_names]
         result = self._funnel_svc.build_funnel(offers, from_date, to_date, partners or [])
         result["offers"] = offers
         return result
