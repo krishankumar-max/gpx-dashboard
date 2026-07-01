@@ -25,6 +25,7 @@ from backend.repositories.base import (
     GameConfigRepository,
     PartnerRepository,
     PublisherRepository,
+    StructureRepository,
 )
 
 
@@ -103,6 +104,29 @@ class RepositoryFactory:
             from backend.repositories.pg.partner import PgPartnerRepository
             logger.info("RepositoryFactory → PgPartnerRepository (PostgreSQL)")
             return PgPartnerRepository()
+
+        raise ValueError(
+            f"Unknown REPO_BACKEND={backend!r}. Valid values: 'json', 'pg'."
+        )
+
+    @staticmethod
+    def create_structure_repo(
+        backend: str = "json",
+        config_dir: Path | None = None,
+    ) -> StructureRepository:
+        backend = backend.lower().strip()
+
+        if backend == "json":
+            from backend.config import DATA_DIR
+            from backend.repositories.json.structure import JsonStructureRepository
+            path = (config_dir or DATA_DIR / "config") / "publisher_structures.json"
+            logger.debug(f"RepositoryFactory → JsonStructureRepository ({path})")
+            return JsonStructureRepository(file_path=path)
+
+        if backend == "pg":
+            from backend.repositories.pg.structure import PgStructureRepository
+            logger.info("RepositoryFactory → PgStructureRepository (PostgreSQL)")
+            return PgStructureRepository()
 
         raise ValueError(
             f"Unknown REPO_BACKEND={backend!r}. Valid values: 'json', 'pg'."

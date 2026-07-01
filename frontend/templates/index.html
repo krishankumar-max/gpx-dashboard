@@ -152,6 +152,23 @@
       </div>
     </div>
 
+    <!-- Manage group -->
+    <div class="sb-group">
+      <div class="sb-group-hdr" onclick="toggleGroup('g-manage', this)">
+        <span class="sb-group-left">
+          <i class="fas fa-layer-group sb-g-icon"></i>
+          <span class="sb-label sb-g-label">Manage</span>
+        </span>
+        <i class="fas fa-chevron-down sb-g-chev sb-label" id="gc-g-manage"></i>
+      </div>
+      <div class="sb-group-items" id="g-manage">
+        <a class="sb-item" data-page="structures" onclick="navigateTo('structures')">
+          <span class="sb-icon"><i class="fas fa-sitemap"></i></span>
+          <span class="sb-label">Publisher Structures</span>
+        </a>
+      </div>
+    </div>
+
     <!-- System group -->
     <div class="sb-group">
       <div class="sb-group-hdr" onclick="toggleGroup('g-system', this)">
@@ -2100,7 +2117,264 @@
 
     </section>
 
-  </main>
+    <!-- PAGE: Publisher Structures -->
+    <section id="page-structures" class="page">
+
+      <!-- Page header -->
+      <div class="page-title-row">
+        <h1 class="page-title">Publisher Structures</h1>
+        <div class="page-title-actions">
+          <button class="btn btn-sm btn-outline" onclick="_stRefresh()" title="Refresh">
+            <i class="fas fa-rotate-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Two-panel layout -->
+      <div class="st-layout">
+
+        <!-- ── LEFT: Publisher list ────────────────────────────────── -->
+        <div class="st-left-panel">
+          <div class="st-left-search-row">
+            <input id="st-pub-search" type="search" class="st-search-input"
+                   placeholder="Search publishers…"
+                   oninput="_stFilterPubs(this.value)">
+          </div>
+          <div id="st-pub-list" class="st-pub-list">
+            <div class="skeleton-block" style="height:48px;margin-bottom:8px;"></div>
+            <div class="skeleton-block" style="height:48px;margin-bottom:8px;"></div>
+            <div class="skeleton-block" style="height:48px;"></div>
+          </div>
+        </div>
+
+        <!-- ── RIGHT: Publisher detail ─────────────────────────────── -->
+        <div class="st-right-panel" id="st-right-panel">
+
+          <!-- Empty state (no publisher selected) -->
+          <div id="st-empty-state" class="st-empty-state">
+            <i class="fas fa-sitemap st-empty-icon"></i>
+            <p>No publisher selected</p>
+          </div>
+
+          <!-- Publisher games + history (hidden until publisher selected) -->
+          <div id="st-pub-detail" style="display:none">
+
+            <!-- Publisher header -->
+            <div class="st-pub-header">
+              <div>
+                <div class="st-pub-title" id="st-pub-hdr-name"></div>
+                <div class="st-pub-id" id="st-pub-hdr-id"></div>
+              </div>
+              <div class="st-pub-actions">
+                <button class="btn-primary" onclick="_stOpenWorkspace('new')">
+                  <i class="fas fa-plus"></i> Add Structure
+                </button>
+                <button class="btn-ghost" onclick="_stOpenCloneSameModal()">
+                  <i class="fas fa-copy"></i> Clone within
+                </button>
+                <button class="btn-outline-sm" onclick="_stOpenCloneOtherModal()">
+                  <i class="fas fa-clone"></i> Clone from another
+                </button>
+              </div>
+            </div>
+
+            <!-- Publisher stat chips (rendered by JS) -->
+            <div id="st-pub-stats-row" class="st-stats-row"></div>
+
+            <!-- Games list (rendered by JS) -->
+            <div id="st-games-list" class="st-games-list"></div>
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+<!-- PAGE: Publisher Structures — Workspace (add / view structure) -->
+<section id="page-structures-edit" class="page">
+
+  <!-- Breadcrumb + title -->
+  <div class="po-header">
+    <nav class="po-breadcrumb">
+      <button class="po-crumb-btn" onclick="_stCloseWorkspace()">
+        <i class="fas fa-arrow-left"></i> Publisher Structures
+      </button>
+      <i class="fas fa-chevron-right po-crumb-sep"></i>
+      <button class="po-crumb-btn" id="st-ws-pub-crumb" onclick="_stCloseWorkspace()">—</button>
+      <i class="fas fa-chevron-right po-crumb-sep"></i>
+      <span class="po-crumb-current" id="st-ws-game-crumb">—</span>
+    </nav>
+    <div class="po-title-row">
+      <div>
+        <h2 class="page-title" id="st-ws-title">Structure</h2>
+        <p class="page-subtitle" id="st-ws-sub"></p>
+      </div>
+      <div id="st-ws-status-wrap" style="margin-left:auto;align-self:center"></div>
+    </div>
+  </div>
+
+  <!-- Action bar (view mode only) -->
+  <div id="st-ws-action-bar" class="st-ws-action-bar" style="display:none">
+    <button id="st-ws-btn-live" class="btn-primary" onclick="_stWsMakeLive()">
+      <i class="fas fa-circle-play"></i> Make Live
+    </button>
+    <button id="st-ws-btn-pause" class="btn-ghost" onclick="_stWsPause()">
+      <i class="fas fa-circle-pause"></i> Pause
+    </button>
+    <button id="st-ws-btn-dl" class="btn-outline-sm" onclick="_stDownloadCsv(_stWsSid)">
+      <i class="fas fa-download"></i> Download CSV
+    </button>
+    <button id="st-ws-btn-compare" class="btn-outline-sm" onclick="_stWsCompare()">
+      <i class="fas fa-code-compare"></i> Compare
+    </button>
+    <button class="btn-outline-sm" onclick="_stWsCloneFromThis()">
+      <i class="fas fa-copy"></i> Clone
+    </button>
+  </div>
+
+  <!-- Card 1: Structure Information -->
+  <div class="card mt-5">
+    <div class="card-header card-toolbar">
+      <h3 class="card-title">Structure Information</h3>
+    </div>
+    <div class="card-body">
+      <!-- NEW mode: editable -->
+      <div id="st-ws-form-new" style="display:none">
+        <div class="mgmt-form-grid">
+          <div class="mgmt-field">
+            <label>Publisher</label>
+            <input id="st-ws-new-pub" type="text" readonly>
+          </div>
+          <div class="mgmt-field">
+            <label>Offer / Game</label>
+            <select id="st-ws-new-offer" onchange="_stWsOfferChanged()"></select>
+          </div>
+        </div>
+        <div id="st-ws-new-offer-name-row" class="mgmt-field" style="display:none;margin-top:12px;max-width:400px">
+          <label>Offer Name (new game)</label>
+          <input id="st-ws-new-offer-name" type="text" placeholder="Display name">
+        </div>
+        <div class="mgmt-form-grid" style="margin-top:12px">
+          <div class="mgmt-field">
+            <label>Tracking Link</label>
+            <input id="st-ws-new-tracking" type="text" placeholder="https://track.example.com/…">
+          </div>
+          <div class="mgmt-field">
+            <label>Preview URL</label>
+            <input id="st-ws-new-preview" type="text" placeholder="https://play.google.com/…">
+          </div>
+        </div>
+      </div>
+      <!-- VIEW mode: read-only -->
+      <div id="st-ws-form-view" class="mgmt-form-grid" style="display:none">
+        <div class="mgmt-field">
+          <label>Publisher</label>
+          <input id="st-ws-view-pub" type="text" readonly>
+        </div>
+        <div class="mgmt-field">
+          <label>Offer / Game</label>
+          <input id="st-ws-view-offer" type="text" readonly>
+        </div>
+        <div class="mgmt-field">
+          <label>Version</label>
+          <input id="st-ws-view-ver" type="text" readonly>
+        </div>
+        <div class="mgmt-field">
+          <label>Created At</label>
+          <input id="st-ws-view-created-at" type="text" readonly>
+        </div>
+        <div class="mgmt-field">
+          <label>Created By</label>
+          <input id="st-ws-view-created-by" type="text" readonly>
+        </div>
+        <div class="mgmt-field">
+          <label>Live At</label>
+          <input id="st-ws-view-live-at" type="text" readonly>
+        </div>
+        <div class="mgmt-field" style="grid-column:1/-1">
+          <label>Tracking Link</label>
+          <input id="st-ws-view-tracking" type="text" readonly>
+        </div>
+        <div class="mgmt-field" style="grid-column:1/-1">
+          <label>Preview URL</label>
+          <input id="st-ws-view-preview" type="text" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 2: Reward Structure -->
+  <div class="card mt-5">
+    <div class="card-header card-toolbar">
+      <h3 class="card-title">Reward Structure</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="st-ws-reward-new-btns" style="display:none;display:flex;gap:6px">
+          <button class="btn-outline-sm" onclick="_stWsAddRow()">
+            <i class="fas fa-plus"></i> Add Row
+          </button>
+          <button class="btn-outline-sm" onclick="document.getElementById('st-ws-csv-file').click()">
+            <i class="fas fa-upload"></i> Upload CSV
+          </button>
+          <input id="st-ws-csv-file" type="file" accept=".csv,text/csv" style="display:none"
+                 onchange="_stWsCsvFileInput(event)">
+        </span>
+        <button id="st-ws-reward-dl-btn" class="btn-outline-sm" style="display:none"
+                onclick="_stDownloadSampleCsv()">
+          <i class="fas fa-download"></i> Sample CSV
+        </button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="st-ws-steps-table">
+        <thead>
+          <tr>
+            <th>Goal</th>
+            <th class="th-num">Expected %</th>
+            <th class="th-num">Time (min)</th>
+            <th class="th-num">Payout ($)</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody id="st-ws-steps-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Card 3: IAP Events -->
+  <div class="card mt-5">
+    <div class="card-header card-toolbar">
+      <h3 class="card-title">IAP Events</h3>
+    </div>
+    <div class="card-body">
+      <div class="mgmt-field">
+        <label>IAP Event Names <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">(comma-separated)</span></label>
+        <input id="st-ws-iap" type="text" placeholder="purchase_10, purchase_99, vip_pack">
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 4: Version History (view mode only) -->
+  <div class="card mt-5" id="st-ws-history-card" style="display:none">
+    <div class="card-header card-toolbar">
+      <h3 class="card-title">Version History</h3>
+      <span class="count-badge" id="st-ws-history-count"></span>
+    </div>
+    <div class="table-wrap" id="st-ws-history-body"></div>
+  </div>
+
+  <!-- Save bar (new mode) -->
+  <div id="st-ws-save-bar" class="st-ws-save-bar" style="display:none">
+    <p id="st-ws-error" class="form-error" style="display:none"></p>
+    <button class="btn-ghost" onclick="_stCloseWorkspace()">Cancel</button>
+    <button id="st-ws-save-btn" class="btn-primary" onclick="_stWsSave()">
+      <i class="fas fa-check"></i> Save Structure
+    </button>
+  </div>
+
+</section>
+
+    </main>
 </div><!-- .shell -->
 
 <!-- ══ SLIDE PANEL ══════════════════════════════════════════════════ -->
@@ -2144,6 +2418,126 @@
     <div class="modal-body" id="modal-pub-status-body"></div>
   </div>
 </div>
+
+
+
+<!-- ══ MODAL: Clone from same publisher
+
+<!-- ══ MODAL: Clone from same publisher ═══════════════════════════════════════ -->
+<div id="modal-st-clone-same" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)_stCloseCloneSameModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Clone Structure — Same Publisher</span>
+      <button class="modal-close" onclick="_stCloseCloneSameModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Source version</label>
+        <select id="st-clone-same-src" class="form-control"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Target game (Offer ID)</label>
+        <input id="st-clone-same-target-offer" type="text" class="form-control"
+               placeholder="offer_id of the target game">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Target game name</label>
+        <input id="st-clone-same-target-name" type="text" class="form-control"
+               placeholder="Display name (optional)">
+      </div>
+      <p id="st-clone-same-error" class="form-error" style="display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="_stCloseCloneSameModal()">Cancel</button>
+      <button id="st-clone-same-btn" class="btn btn-primary"
+              onclick="_stSaveCloneSame()">Clone</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ MODAL: Clone from another publisher ════════════════════════════════════ -->
+<div id="modal-st-clone-other" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)_stCloseCloneOtherModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Clone Structure — Any Publisher</span>
+      <button class="modal-close" onclick="_stCloseCloneOtherModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Source publisher</label>
+        <select id="st-clone-other-src-pub" class="form-control"
+                onchange="_stCloneOtherPubChanged()">
+          <option value="">— select publisher —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Source game + version</label>
+        <select id="st-clone-other-src-ver" class="form-control"
+                onchange="_stCloneOtherVerChanged()">
+          <option value="">— select version —</option>
+        </select>
+      </div>
+      <div id="st-clone-other-preview" class="st-clone-preview" style="display:none">
+        <div class="st-clone-preview-label">Structure to be cloned</div>
+        <div id="st-clone-other-preview-body"></div>
+      </div>
+      <hr class="modal-hr">
+      <div class="form-group">
+        <label class="form-label">Target game (Offer ID)</label>
+        <input id="st-clone-other-target-offer" type="text" class="form-control"
+               placeholder="offer_id of the target game">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Target game name</label>
+        <input id="st-clone-other-target-name" type="text" class="form-control"
+               placeholder="Display name (optional)">
+      </div>
+      <p id="st-clone-other-error" class="form-error" style="display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="_stCloseCloneOtherModal()">Cancel</button>
+      <button id="st-clone-other-btn" class="btn btn-primary"
+              onclick="_stSaveCloneOther()">Clone</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ MODAL: Compare Structures ══════════════════════════════════════════════ -->
+<div id="modal-st-compare" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)_stCloseCompareModal()">
+  <div class="modal-box modal-box-xl">
+    <div class="modal-header">
+      <span class="modal-title">Compare Structures</span>
+      <button class="modal-close" onclick="_stCloseCompareModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Version pickers -->
+      <div class="st-compare-picker-row">
+        <div class="form-group">
+          <label class="form-label">Version A</label>
+          <select id="st-compare-sel-a" class="form-control"
+                  onchange="_stCompareRender()"></select>
+        </div>
+        <div class="st-compare-vs">vs</div>
+        <div class="form-group">
+          <label class="form-label">Version B</label>
+          <select id="st-compare-sel-b" class="form-control"
+                  onchange="_stCompareRender()"></select>
+        </div>
+      </div>
+      <!-- Side-by-side diff -->
+      <div id="st-compare-body" class="st-compare-body"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="_stCloseCompareModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- ══ AUTH: Login overlay ══════════════════════════════════════════════════ -->
 <!-- Shown on page load. _initAuth() hides it only after GET /me confirms  -->

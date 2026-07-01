@@ -29,6 +29,7 @@ const PAGES = {
   publishers     : 'Publishers',
   offers         : 'Offers',
   analytics      : 'Performance',
+  structures     : 'Publisher Structures',
   administration : 'Administration',
 };
 const DEFAULT_TABS = {
@@ -417,6 +418,7 @@ async function loadPageData(page) {
     case 'publishers':      await loadTabData(page, tab || 'summary'); break;
     case 'offers':          await loadTabData(page, tab || 'summary'); break;
     case 'analytics':       await loadTabData(page, tab || 'trend'); break;
+    case 'structures':      await loadStructuresPage(); break;
     case 'administration':  await loadTabData(page, tab || 'sync'); break;
   }
   _loaded.add(page);
@@ -5350,3 +5352,872 @@ document.addEventListener('keydown', e => {
     if (document.getElementById('slide-panel')?.classList.contains('open')) closeSlidePanel();
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PUBLISHER STRUCTURES MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Module state ──────────────────────────────────────────────────────────────
+let _stPubs    = [];    // [{publisher_id, partner_name, live_games, ...}]
+let _stSelPub  = null;  // selected publisher_id
+let _stPubData = null;  // {publisher_id, partner_name, games:[...]}
+let _stAllStructures = [];
+
+// Workspace state
+let _stWsSid  = null;   // structure id in workspace
+let _stWsMode = 'new';  // 'new' | 'view'
+
+// ── Page entry point ──────────────────────────────────────────────────────────
+async function loadStructuresPage() {
+  await _stRefresh();
+}
+
+async function _stRefresh() {
+  const res = await authFetch('/api/structures/publishers');
+  if (!res.ok) { showToast('Failed to load publishers', 'error'); return; }
+  _stPubs = await res.json();
+  _stRenderPubList(_stPubs);
+  if (_stSelPub && _stPubs.find(p => p.publisher_id === _stSelPub)) {
+    await _stSelectPublisher(_stSelPub);
+  } else if (_stPubs.length > 0) {
+    await _stSelectPublisher(_stPubs[0].publisher_id);
+  }
+}
+
+// ── Publisher list (left panel) ───────────────────────────────────────────────
+function _stRenderPubList(pubs) {
+  const el = document.getElementById('st-pub-list');
+  if (!pubs.length) {
+    el.innerHTML = '<p style="padding:16px;font-size:13px;color:var(--txt-muted)">No publishers configured.</p>';
+    return;
+  }
+  el.innerHTML = pubs.map(p => {
+    const active = p.publisher_id === _stSelPub ? ' st-pub-item--active' : '';
+    return `
+      <div class="st-pub-item${active}" onclick="_stSelectPublisher('${p.publisher_id}')">
+        <div class="st-pub-item-name">${_esc(p.partner_name)}</div>
+        <div class="st-pub-item-chips">
+          <span class="st-chip st-chip--live">${p.live_games} live</span>
+          ${p.pending_structures ? `<span class="st-chip st-chip--pending">${p.pending_structures} pending</span>` : ''}
+          ${p.paused_structures  ? `<span class="st-chip st-chip--paused">${p.paused_structures} paused</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _stFilterPubs(q) {
+  const lq = q.toLowerCase();
+  const filtered = lq ? _stPubs.filter(p => p.partner_name.toLowerCase().includes(lq)) : _stPubs;
+  _stRenderPubList(filtered);
+}
+
+// ── Select publisher ──────────────────────────────────────────────────────────
+async function _stSelectPublisher(pid) {
+  _stSelPub = pid;
+  document.querySelectorAll('.st-pub-item').forEach(el => {
+    const nameEl = el.querySelector('.st-pub-item-name');
+    const match  = nameEl?.textContent === (_stPubs.find(p => p.publisher_id === pid)?.partner_name || '');
+    el.classList.toggle('st-pub-item--active', match);
+  });
+
+  document.getElementById('st-empty-state').style.display  = 'none';
+  document.getElementById('st-pub-detail').style.display   = 'block';
+  document.getElementById('st-games-list').innerHTML =
+    '<div class="skeleton-block" style="height:80px;margin-bottom:12px;border-radius:var(--r-lg)"></div>'.repeat(2);
+
+  const res = await authFetch(`/api/structures/publisher/${encodeURIComponent(pid)}`);
+  if (!res.ok) { showToast('Failed to load publisher data', 'error'); return; }
+  _stPubData = await res.json();
+
+  // Header
+  document.getElementById('st-pub-hdr-name').textContent = _stPubData.partner_name;
+  const idEl = document.getElementById('st-pub-hdr-id');
+  if (idEl) idEl.textContent = pid;
+
+  // Stats
+  const pub = _stPubs.find(p => p.publisher_id === pid) || {};
+  document.getElementById('st-pub-stats-row').innerHTML = `
+    <div class="st-stat-chip">
+      <span class="st-stat-num">${pub.live_games||0}</span>
+      <span class="st-stat-lbl">Live Games</span>
+    </div>
+    <div class="st-stat-chip">
+      <span class="st-stat-num">${pub.pending_structures||0}</span>
+      <span class="st-stat-lbl">Pending</span>
+    </div>
+    <div class="st-stat-chip">
+      <span class="st-stat-num">${pub.paused_structures||0}</span>
+      <span class="st-stat-lbl">Paused</span>
+    </div>
+    <div class="st-stat-chip">
+      <span class="st-stat-num">${pub.total_structures||0}</span>
+      <span class="st-stat-lbl">Total</span>
+    </div>`;
+
+  _stRenderGames(_stPubData.games);
+}
+
+// ── Games list ────────────────────────────────────────────────────────────────
+function _stRenderGames(games) {
+  const el = document.getElementById('st-games-list');
+  if (!games.length) {
+    el.innerHTML = `
+      <div class="st-empty-state" style="min-height:200px">
+        <i class="fas fa-inbox st-empty-icon"></i>
+        <p>No structures found for this publisher</p>
+        <button class="btn-primary" onclick="_stOpenWorkspace('new')" style="margin-top:8px">
+          <i class="fas fa-plus"></i> Add Structure
+        </button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = games.map(g => _stGameCard(g)).join('');
+}
+
+function _stGameCard(g) {
+  const liveTag = g.live_structure
+    ? `<span class="st-badge st-badge--live">LIVE v${g.live_structure.version}</span>`
+    : `<span class="st-badge st-badge--none">No live version</span>`;
+
+  const rows = g.versions.map(v => _stVersionRow(v)).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header card-toolbar">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;flex:1">
+          <h3 class="card-title" style="font-size:13px;font-weight:700;color:var(--txt-head);text-transform:none;letter-spacing:0">${_esc(g.offer_name || g.offer_id)}</h3>
+          <span style="font-size:12px;color:var(--txt-muted)">${_esc(g.offer_id)}</span>
+          ${liveTag}
+          <span class="count-badge">${g.versions.length} version${g.versions.length !== 1 ? 's' : ''}</span>
+        </div>
+        <button class="btn-outline-sm"
+                onclick="_stOpenCompareModal('${_esc(g.offer_id)}')"
+                ${g.versions.length < 2 ? 'disabled title="Need at least 2 versions to compare"' : ''}>
+          <i class="fas fa-code-compare"></i> Compare
+        </button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:52px">Ver</th>
+              <th>Status</th>
+              <th>Steps / Payout</th>
+              <th>Tracking</th>
+              <th>Created</th>
+              <th>By</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function _stVersionRow(v) {
+  const badgeCls = { live:'st-badge--live', pending:'st-badge--pending', paused:'st-badge--paused' }[v.status] || 'st-badge--none';
+  const badge    = `<span class="st-badge ${badgeCls}">${v.status.toUpperCase()}</span>`;
+  const steps    = (v.reward_steps||[]).length;
+  const payout   = (v.reward_steps||[]).reduce((s,r) => s + (+r.payout||0), 0).toFixed(2);
+  const tracking = v.tracking_link
+    ? `<a href="${_esc(v.tracking_link)}" target="_blank" style="color:var(--primary);font-size:12px">link ↗</a>`
+    : '—';
+
+  const canLive   = v.status !== 'live';
+  const canPause  = v.status === 'live';
+  const canDelete = v.status !== 'live';  // pending + paused only
+
+  return `
+    <tr class="${v.status === 'live' ? 'st-row-live' : ''}" id="st-vrow-${v.id}">
+      <td><strong>v${v.version}</strong></td>
+      <td>${badge}</td>
+      <td class="td-mono" style="white-space:nowrap">${steps} steps · $${payout}</td>
+      <td>${tracking}</td>
+      <td class="td-time">${_stFmtTs(v.created_at)}</td>
+      <td style="font-size:12px;color:var(--txt-muted)">${_esc(v.created_by||'—')}</td>
+      <td>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+          <button class="tbl-btn tbl-btn-edit" onclick="_stOpenWorkspace('view','${v.id}')">
+            <i class="fas fa-eye"></i> View
+          </button>
+          <button class="tbl-btn" style="background:var(--bg-app)" title="Download CSV"
+                  onclick="_stDownloadCsv('${v.id}')">
+            <i class="fas fa-download"></i>
+          </button>
+          ${canLive  ? `<button class="tbl-btn" style="background:var(--green-lt);color:var(--green);border-color:rgba(34,197,94,.3)"
+                  onclick="_stMakeLive('${v.id}')">Live</button>` : ''}
+          ${canPause ? `<button class="tbl-btn" style="background:var(--amber-lt);color:var(--amber);border-color:rgba(234,179,8,.3)"
+                  onclick="_stPause('${v.id}')">Pause</button>` : ''}
+          ${canDelete ? `<button class="tbl-btn tbl-btn-del" id="st-del-${v.id}"
+                  onclick="_stDeleteStructure('${v.id}', this)">
+            <i class="fas fa-trash-can"></i> Delete
+          </button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+}
+
+// ── Status transitions (from list view) ───────────────────────────────────────
+async function _stMakeLive(sid) {
+  const res = await authFetch(`/api/structures/${sid}/make-live`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:'unknown error'}));
+    showToast('Could not promote: ' + (err.error||''), 'error'); return;
+  }
+  showToast('Structure is now Live', 'success');
+  _loaded.delete('structures');
+  await _stSelectPublisher(_stSelPub);
+}
+
+async function _stPause(sid) {
+  const res = await authFetch(`/api/structures/${sid}/pause`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:'unknown error'}));
+    showToast('Could not pause: ' + (err.error||''), 'error'); return;
+  }
+  showToast('Structure paused', 'success');
+  _loaded.delete('structures');
+  await _stSelectPublisher(_stSelPub);
+}
+
+function _stDeleteStructure(sid, btn) {
+  _armDeleteBtn(btn, async () => {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+    const res = await authFetch(`/api/structures/${sid}`, {method:'DELETE'});
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({error:'Delete failed'}));
+      showToast(err.error || 'Delete failed', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-trash-can"></i> Delete';
+      return;
+    }
+    showToast('Structure deleted', 'success');
+    _loaded.delete('structures');
+    // Optimistically remove the row, then refresh stats
+    const row = document.getElementById(`st-vrow-${sid}`);
+    if (row) row.remove();
+    await _stSelectPublisher(_stSelPub);
+  });
+}
+
+// ── Workspace navigation ──────────────────────────────────────────────────────
+async function _stOpenWorkspace(mode, sid) {
+  _stWsMode = mode;
+  _stWsSid  = sid || null;
+
+  // Sub-page: deactivate all pages, activate workspace
+  document.querySelectorAll('.page.active').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-structures-edit').classList.add('active');
+
+  if (mode === 'new') {
+    _stWsRenderNew();
+  } else {
+    // Loading state
+    document.getElementById('st-ws-title').textContent = 'Loading…';
+    document.getElementById('st-ws-sub').textContent   = '';
+    document.getElementById('st-ws-status-wrap').innerHTML = '';
+    document.getElementById('st-ws-action-bar').style.display = 'none';
+    document.getElementById('st-ws-save-bar').style.display   = 'none';
+    document.getElementById('st-ws-form-new').style.display   = 'none';
+    document.getElementById('st-ws-form-view').style.display  = 'none';
+    document.getElementById('st-ws-steps-body').innerHTML =
+      '<tr><td colspan="5" style="padding:20px"><div class="skeleton-block" style="height:36px"></div></td></tr>'.repeat(3);
+
+    const res = await authFetch(`/api/structures/${sid}`);
+    if (!res.ok) { showToast('Failed to load structure', 'error'); _stCloseWorkspace(); return; }
+    const s = await res.json();
+    _stWsRenderView(s);
+  }
+}
+
+function _stCloseWorkspace() {
+  document.getElementById('page-structures-edit').classList.remove('active');
+  document.getElementById('page-structures').classList.add('active');
+}
+
+// ── Workspace: NEW mode ───────────────────────────────────────────────────────
+function _stWsRenderNew() {
+  const pub = _stPubs.find(p => p.publisher_id === _stSelPub);
+
+  // Breadcrumb
+  document.getElementById('st-ws-pub-crumb').textContent   = pub?.partner_name || _stSelPub;
+  document.getElementById('st-ws-game-crumb').textContent  = 'New Structure';
+
+  // Title
+  document.getElementById('st-ws-title').textContent = 'New Structure';
+  document.getElementById('st-ws-sub').textContent   = `Publisher: ${pub?.partner_name || _stSelPub}`;
+  document.getElementById('st-ws-status-wrap').innerHTML   = '';
+
+  // Visibility
+  document.getElementById('st-ws-action-bar').style.display    = 'none';
+  document.getElementById('st-ws-save-bar').style.display      = 'flex';
+  document.getElementById('st-ws-form-new').style.display      = '';
+  document.getElementById('st-ws-form-view').style.display     = 'none';
+  document.getElementById('st-ws-reward-new-btns').style.display = 'flex';
+  document.getElementById('st-ws-reward-dl-btn').style.display   = 'none';
+  document.getElementById('st-ws-history-card').style.display    = 'none';
+
+  // Populate
+  document.getElementById('st-ws-new-pub').value     = pub?.partner_name || _stSelPub;
+  document.getElementById('st-ws-new-tracking').value = '';
+  document.getElementById('st-ws-new-preview').value  = '';
+
+  const sel = document.getElementById('st-ws-new-offer');
+  sel.innerHTML = '<option value="">— select or type new —</option>';
+  (_stPubData?.games||[]).forEach(g => {
+    sel.add(new Option(`${g.offer_name||g.offer_id} (${g.offer_id})`, g.offer_id));
+  });
+  sel.add(new Option('+ New game…', '__new__'));
+  document.getElementById('st-ws-new-offer-name-row').style.display = 'none';
+
+  // Reward steps — one blank row
+  document.getElementById('st-ws-steps-body').innerHTML = '';
+  _stWsAddRow();
+
+  // IAP
+  document.getElementById('st-ws-iap').value    = '';
+  document.getElementById('st-ws-iap').readOnly = false;
+
+  _clearFormError('st-ws-error');
+}
+
+// ── Workspace: VIEW mode ──────────────────────────────────────────────────────
+function _stWsRenderView(s) {
+  const pub = _stPubs.find(p => p.publisher_id === s.publisher_id);
+
+  // Breadcrumb
+  document.getElementById('st-ws-pub-crumb').textContent  = pub?.partner_name || s.publisher_id;
+  document.getElementById('st-ws-game-crumb').textContent = `${s.offer_name||s.offer_id} v${s.version}`;
+
+  // Title
+  document.getElementById('st-ws-title').textContent = `${s.offer_name||s.offer_id} — Version ${s.version}`;
+  document.getElementById('st-ws-sub').textContent   = `Publisher: ${pub?.partner_name || s.publisher_id}`;
+
+  // Status badge
+  const bc = { live:'st-badge--live', pending:'st-badge--pending', paused:'st-badge--paused' }[s.status] || '';
+  document.getElementById('st-ws-status-wrap').innerHTML =
+    `<span class="st-badge ${bc}">${s.status.toUpperCase()}</span>`;
+
+  // Visibility
+  document.getElementById('st-ws-action-bar').style.display    = 'flex';
+  document.getElementById('st-ws-save-bar').style.display      = 'none';
+  document.getElementById('st-ws-form-new').style.display      = 'none';
+  document.getElementById('st-ws-form-view').style.display     = '';
+  document.getElementById('st-ws-reward-new-btns').style.display = 'none';
+  document.getElementById('st-ws-reward-dl-btn').style.display   = '';
+
+  // Action bar button states
+  document.getElementById('st-ws-btn-live').style.display  = s.status !== 'live' ? '' : 'none';
+  document.getElementById('st-ws-btn-pause').style.display = s.status === 'live'  ? '' : 'none';
+
+  // Compare button: disabled if game has <2 versions
+  const game = _stPubData?.games?.find(g => g.offer_id === s.offer_id);
+  const cmpBtn = document.getElementById('st-ws-btn-compare');
+  cmpBtn.disabled = !game || (game.versions||[]).length < 2;
+  cmpBtn.title    = cmpBtn.disabled ? 'Need at least 2 versions to compare' : 'Compare versions';
+
+  // Info card fields
+  document.getElementById('st-ws-view-pub').value        = pub?.partner_name || s.publisher_id;
+  document.getElementById('st-ws-view-offer').value      = `${s.offer_name||s.offer_id} (${s.offer_id})`;
+  document.getElementById('st-ws-view-ver').value        = `v${s.version}`;
+  document.getElementById('st-ws-view-created-at').value = _stFmtTs(s.created_at);
+  document.getElementById('st-ws-view-created-by').value = s.created_by || '—';
+  document.getElementById('st-ws-view-live-at').value    = _stFmtTs(s.live_at);
+  document.getElementById('st-ws-view-tracking').value   = s.tracking_link || '';
+  document.getElementById('st-ws-view-preview').value    = s.preview_url   || '';
+
+  // Reward steps (read-only)
+  const steps = s.reward_steps || [];
+  document.getElementById('st-ws-steps-body').innerHTML = steps.length
+    ? steps.map(r => `
+        <tr>
+          <td>${_esc(r.goal)}</td>
+          <td class="td-num">${r.expected_percent}</td>
+          <td class="td-num">${r.time_minutes}</td>
+          <td class="td-num td-mono">$${(+r.payout).toFixed(2)}</td>
+          <td></td>
+        </tr>`).join('')
+    : `<tr><td colspan="5" class="td-empty">
+         <div class="empty-state"><i class="fas fa-table empty-icon"></i><p>No reward steps</p></div>
+       </td></tr>`;
+
+  // IAP events (read-only)
+  document.getElementById('st-ws-iap').value    = (s.iap_events||[]).join(', ');
+  document.getElementById('st-ws-iap').readOnly = true;
+
+  // Version History card
+  if (game && (game.versions||[]).length > 1) {
+    document.getElementById('st-ws-history-card').style.display = '';
+    document.getElementById('st-ws-history-count').textContent  = game.versions.length + ' versions';
+
+    const histRows = game.versions.map(v => {
+      const isCur = v.id === s.id;
+      const bc2   = { live:'st-badge--live', pending:'st-badge--pending', paused:'st-badge--paused' }[v.status] || '';
+      const pay   = (v.reward_steps||[]).reduce((sum,r) => sum+(+r.payout||0), 0).toFixed(2);
+      return `<tr${isCur ? ' style="background:var(--primary-lt)"' : ''}>
+        <td><strong>v${v.version}</strong>${isCur ? ' <span style="font-size:11px;color:var(--primary)">(current)</span>' : ''}</td>
+        <td><span class="st-badge ${bc2}">${v.status.toUpperCase()}</span></td>
+        <td class="td-mono">${(v.reward_steps||[]).length} steps · $${pay}</td>
+        <td class="td-time">${_stFmtTs(v.created_at)}</td>
+        <td style="font-size:12px;color:var(--txt-muted)">${_esc(v.created_by||'—')}</td>
+        <td>${!isCur ? `<button class="tbl-btn tbl-btn-edit" onclick="_stOpenWorkspace('view','${v.id}')">View</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('st-ws-history-body').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Version</th><th>Status</th><th>Steps / Payout</th><th>Created</th><th>By</th><th></th></tr></thead>
+        <tbody>${histRows}</tbody>
+      </table>`;
+  } else {
+    document.getElementById('st-ws-history-card').style.display = 'none';
+  }
+}
+
+// ── Workspace: offer dropdown ─────────────────────────────────────────────────
+function _stWsOfferChanged() {
+  const val = document.getElementById('st-ws-new-offer').value;
+  document.getElementById('st-ws-new-offer-name-row').style.display = val === '__new__' ? '' : 'none';
+}
+
+// ── Workspace: add reward row ─────────────────────────────────────────────────
+function _stWsAddRow() {
+  const tbody = document.getElementById('st-ws-steps-body');
+  const tr    = document.createElement('tr');
+  tr.className = 'st-ws-step-row';
+  tr.innerHTML = `
+    <td><input type="text"   class="ws-goal"   placeholder="install"></td>
+    <td><input type="number" class="ws-pct"    placeholder="100" value="100" min="0" max="100" step="any"></td>
+    <td><input type="number" class="ws-time"   placeholder="0"   value="0"   min="0" step="any"></td>
+    <td><input type="number" class="ws-payout" placeholder="0.00" value="0" min="0" step="0.01"></td>
+    <td><button class="tbl-btn tbl-btn-del" onclick="this.closest('tr').remove()" title="Remove">
+      <i class="fas fa-xmark"></i>
+    </button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.ws-goal').focus();
+}
+
+// ── Workspace: CSV import ─────────────────────────────────────────────────────
+function _stWsCsvFileInput(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => _stWsCsvImport(ev.target.result);
+  reader.readAsText(file);
+}
+
+function _stWsCsvImport(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  if (!lines.length) { showToast('CSV appears empty', 'error'); return; }
+  const rawHeaders = lines[0].split(',').map(h => h.trim());
+  const norm = h => h.toLowerCase().replace(/[\s_-]+/g,'');
+  const headerMap = {}; // normalised → original index
+  rawHeaders.forEach((h, i) => { headerMap[norm(h)] = i; });
+  const get = (row, ...keys) => {
+    for (const k of keys) {
+      const idx = headerMap[norm(k)];
+      if (idx !== undefined && row[idx] !== undefined) return row[idx].trim();
+    }
+    return '';
+  };
+
+  const rows = lines.slice(1)
+    .map(l => l.split(',').map(c => c.trim()))
+    .filter(r => r.some(v => v));
+
+  if (!rows.length) { showToast('No data rows found', 'error'); return; }
+
+  const tbody = document.getElementById('st-ws-steps-body');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'st-ws-step-row';
+    tr.innerHTML = `
+      <td><input type="text"   class="ws-goal"   value="${_esc(get(r,'goal','goalname','event'))}"></td>
+      <td><input type="number" class="ws-pct"    value="${get(r,'expected_percent','expectedpercent')||100}" min="0" max="100" step="any"></td>
+      <td><input type="number" class="ws-time"   value="${get(r,'time_minutes','timeminutes')||0}" min="0" step="any"></td>
+      <td><input type="number" class="ws-payout" value="${get(r,'payout','bid','reward')||0}" min="0" step="0.01"></td>
+      <td><button class="tbl-btn tbl-btn-del" onclick="this.closest('tr').remove()"><i class="fas fa-xmark"></i></button></td>`;
+    tbody.appendChild(tr);
+  });
+  showToast(`${rows.length} rows imported`, 'success');
+}
+
+// ── Workspace: save new structure ─────────────────────────────────────────────
+async function _stWsSave() {
+  _clearFormError('st-ws-error');
+
+  const selOffer = document.getElementById('st-ws-new-offer').value;
+  if (!selOffer) {
+    _showFormError('st-ws-error', 'Select a game or create a new one');
+    showToast('Select a game or create a new one', 'error');
+    return;
+  }
+
+  let finalOfferId, offerName;
+  if (selOffer === '__new__') {
+    offerName    = document.getElementById('st-ws-new-offer-name').value.trim();
+    if (!offerName) {
+      _showFormError('st-ws-error', 'Enter a name for the new game');
+      showToast('Enter a name for the new game', 'error');
+      return;
+    }
+    finalOfferId = offerName.toLowerCase().replace(/\s+/g, '-');
+  } else {
+    finalOfferId = selOffer;
+    offerName    = (_stPubData?.games||[]).find(g => g.offer_id === selOffer)?.offer_name || selOffer;
+  }
+
+  const rows = document.querySelectorAll('#st-ws-steps-body tr.st-ws-step-row');
+  const rewardSteps = Array.from(rows).map(tr => ({
+    goal:             tr.querySelector('.ws-goal')?.value.trim()   || '',
+    expected_percent: parseFloat(tr.querySelector('.ws-pct')?.value)    || 100,
+    time_minutes:     parseFloat(tr.querySelector('.ws-time')?.value)   || 0,
+    payout:           parseFloat(tr.querySelector('.ws-payout')?.value) || 0,
+  }));
+
+  if (!rewardSteps.length) {
+    _showFormError('st-ws-error', 'Add at least one reward step');
+    showToast('Add at least one reward step', 'error');
+    return;
+  }
+  if (rewardSteps.some(r => !r.goal)) {
+    _showFormError('st-ws-error', 'All steps need a goal name');
+    showToast('All steps need a goal name', 'error');
+    return;
+  }
+
+  const iapRaw  = document.getElementById('st-ws-iap').value;
+  const iapList = iapRaw ? iapRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    publisher_id:  _stSelPub,
+    offer_id:      finalOfferId,
+    offer_name:    offerName,
+    reward_steps:  rewardSteps,
+    tracking_link: document.getElementById('st-ws-new-tracking').value.trim(),
+    preview_url:   document.getElementById('st-ws-new-preview').value.trim(),
+    iap_events:    iapList,
+  };
+
+  const btn = document.getElementById('st-ws-save-btn');
+  btnBusy(btn, 'Saving…');
+  try {
+    const res = await authFetch('/api/structures', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({error: 'Unknown error'}));
+      const msg = err.error || 'Save failed';
+      _showFormError('st-ws-error', msg);
+      showToast(msg, 'error');
+      return;
+    }
+    showToast('Structure saved', 'success');
+    _loaded.delete('structures');
+    _stCloseWorkspace();
+    await _stSelectPublisher(_stSelPub);
+  } catch (e) {
+    const msg = 'Network error — could not save structure';
+    _showFormError('st-ws-error', msg);
+    showToast(msg, 'error');
+  } finally {
+    btnIdle(btn);
+  }
+}
+
+// ── Workspace: make live ──────────────────────────────────────────────────────
+async function _stWsMakeLive() {
+  if (!_stWsSid) return;
+  const res = await authFetch(`/api/structures/${_stWsSid}/make-live`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:''}));
+    showToast('Could not promote: ' + (err.error||''), 'error'); return;
+  }
+  showToast('Structure is now Live', 'success');
+  _loaded.delete('structures');
+  // Refresh publisher data then re-open workspace
+  const pubRes = await authFetch(`/api/structures/publisher/${encodeURIComponent(_stSelPub)}`);
+  if (pubRes.ok) _stPubData = await pubRes.json();
+  await _stOpenWorkspace('view', _stWsSid);
+}
+
+// ── Workspace: pause ──────────────────────────────────────────────────────────
+async function _stWsPause() {
+  if (!_stWsSid) return;
+  const res = await authFetch(`/api/structures/${_stWsSid}/pause`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:''}));
+    showToast('Could not pause: ' + (err.error||''), 'error'); return;
+  }
+  showToast('Structure paused', 'success');
+  _loaded.delete('structures');
+  const pubRes = await authFetch(`/api/structures/publisher/${encodeURIComponent(_stSelPub)}`);
+  if (pubRes.ok) _stPubData = await pubRes.json();
+  await _stOpenWorkspace('view', _stWsSid);
+}
+
+// ── Workspace: compare ────────────────────────────────────────────────────────
+function _stWsCompare() {
+  const game = _stPubData?.games?.find(g => (g.versions||[]).some(v => v.id === _stWsSid));
+  if (game) _stOpenCompareModal(game.offer_id);
+}
+
+// ── Workspace: clone from current ────────────────────────────────────────────
+function _stWsCloneFromThis() {
+  _stCloseWorkspace();
+  _stOpenCloneSameModal();
+}
+
+// ── Sample CSV download ───────────────────────────────────────────────────────
+function _stDownloadSampleCsv() {
+  const csv = 'goal,expected_percent,time_minutes,payout\ninstall,100,0,5.00\nreached_level_5,80,5,10.00\nreached_level_10,60,15,15.00\n';
+  const a   = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'reward_structure_sample.csv';
+  a.click();
+}
+
+// ── Download structure CSV ────────────────────────────────────────────────────
+function _stDownloadCsv(sid) {
+  window.location.href = `/api/structures/${sid}/csv`;
+}
+
+// ── Clone from same publisher ─────────────────────────────────────────────────
+function _stOpenCloneSameModal() {
+  if (!_stPubData) return;
+  const sel = document.getElementById('st-clone-same-src');
+  sel.innerHTML = '';
+  (_stPubData.games||[]).forEach(g => {
+    (g.versions||[]).forEach(v => {
+      sel.add(new Option(`${g.offer_name||g.offer_id} v${v.version} [${v.status}]`, v.id));
+    });
+  });
+  document.getElementById('st-clone-same-target-offer').value = '';
+  document.getElementById('st-clone-same-target-name').value  = '';
+  _clearFormError('st-clone-same-error');
+  document.getElementById('modal-st-clone-same').style.display = 'flex';
+}
+function _stCloseCloneSameModal() {
+  document.getElementById('modal-st-clone-same').style.display = 'none';
+}
+async function _stSaveCloneSame() {
+  _clearFormError('st-clone-same-error');
+  const srcId      = document.getElementById('st-clone-same-src').value;
+  const targetOid  = document.getElementById('st-clone-same-target-offer').value.trim();
+  const targetName = document.getElementById('st-clone-same-target-name').value.trim();
+  if (!targetOid) { _showFormError('st-clone-same-error', 'Target offer ID is required'); return; }
+  const btn = document.getElementById('st-clone-same-btn');
+  btnBusy(btn, 'Cloning…');
+  const res = await authFetch('/api/structures/clone', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ source_id: srcId, target_publisher_id: _stSelPub, target_offer_id: targetOid, target_offer_name: targetName }),
+  });
+  btnIdle(btn, 'Clone');
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:'unknown'}));
+    _showFormError('st-clone-same-error', err.error||'Clone failed'); return;
+  }
+  _stCloseCloneSameModal();
+  showToast('Structure cloned', 'success');
+  _loaded.delete('structures');
+  await _stSelectPublisher(_stSelPub);
+}
+
+// ── Clone from another publisher ──────────────────────────────────────────────
+async function _stOpenCloneOtherModal() {
+  const srcPubSel = document.getElementById('st-clone-other-src-pub');
+  srcPubSel.innerHTML = '<option value="">— select publisher —</option>';
+  _stPubs.filter(p => p.publisher_id !== _stSelPub).forEach(p => {
+    srcPubSel.add(new Option(p.partner_name, p.publisher_id));
+  });
+  document.getElementById('st-clone-other-src-ver').innerHTML   = '<option value="">— select version —</option>';
+  document.getElementById('st-clone-other-preview').style.display = 'none';
+  document.getElementById('st-clone-other-target-offer').value  = '';
+  document.getElementById('st-clone-other-target-name').value   = '';
+  _clearFormError('st-clone-other-error');
+  document.getElementById('modal-st-clone-other').style.display = 'flex';
+}
+function _stCloseCloneOtherModal() {
+  document.getElementById('modal-st-clone-other').style.display = 'none';
+}
+async function _stCloneOtherPubChanged() {
+  const pid    = document.getElementById('st-clone-other-src-pub').value;
+  const verSel = document.getElementById('st-clone-other-src-ver');
+  verSel.innerHTML = '<option value="">Loading…</option>';
+  document.getElementById('st-clone-other-preview').style.display = 'none';
+  if (!pid) { verSel.innerHTML = '<option value="">— select version —</option>'; return; }
+  const res = await authFetch(`/api/structures/publisher/${encodeURIComponent(pid)}`);
+  if (!res.ok) { verSel.innerHTML = '<option value="">Error loading</option>'; return; }
+  const data = await res.json();
+  verSel.innerHTML = '<option value="">— select version —</option>';
+  (data.games||[]).forEach(g => {
+    (g.versions||[]).forEach(v => {
+      verSel.add(new Option(`${g.offer_name||g.offer_id} v${v.version} [${v.status}]`, v.id));
+    });
+  });
+}
+async function _stCloneOtherVerChanged() {
+  const sid     = document.getElementById('st-clone-other-src-ver').value;
+  const preview = document.getElementById('st-clone-other-preview');
+  if (!sid) { preview.style.display = 'none'; return; }
+  const res = await authFetch(`/api/structures/${sid}`);
+  if (!res.ok) { preview.style.display = 'none'; return; }
+  const s = await res.json();
+  document.getElementById('st-clone-other-preview-body').innerHTML = _stStructureSummaryHtml(s);
+  preview.style.display = '';
+}
+async function _stSaveCloneOther() {
+  _clearFormError('st-clone-other-error');
+  const srcId      = document.getElementById('st-clone-other-src-ver').value;
+  const targetOid  = document.getElementById('st-clone-other-target-offer').value.trim();
+  const targetName = document.getElementById('st-clone-other-target-name').value.trim();
+  if (!srcId)     { _showFormError('st-clone-other-error', 'Select a source version'); return; }
+  if (!targetOid) { _showFormError('st-clone-other-error', 'Target offer ID is required'); return; }
+  const btn = document.getElementById('st-clone-other-btn');
+  btnBusy(btn, 'Cloning…');
+  const res = await authFetch('/api/structures/clone', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ source_id: srcId, target_publisher_id: _stSelPub, target_offer_id: targetOid, target_offer_name: targetName }),
+  });
+  btnIdle(btn, 'Clone');
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({error:'unknown'}));
+    _showFormError('st-clone-other-error', err.error||'Clone failed'); return;
+  }
+  _stCloseCloneOtherModal();
+  showToast('Structure cloned', 'success');
+  _loaded.delete('structures');
+  await _stSelectPublisher(_stSelPub);
+}
+
+// ── Compare modal ─────────────────────────────────────────────────────────────
+function _stOpenCompareModal(offerId) {
+  if (!_stPubData) return;
+  const game = (_stPubData.games||[]).find(g => g.offer_id === offerId);
+  if (!game || (game.versions||[]).length < 2) return;
+
+  const selA = document.getElementById('st-compare-sel-a');
+  const selB = document.getElementById('st-compare-sel-b');
+  selA.innerHTML = '';
+  selB.innerHTML = '';
+  game.versions.forEach(v => {
+    const label = `v${v.version} [${v.status}]`;
+    selA.add(new Option(label, v.id));
+    selB.add(new Option(label, v.id));
+  });
+  selA.value = game.versions[game.versions.length - 2].id;
+  selB.value = game.versions[game.versions.length - 1].id;
+
+  document.getElementById('modal-st-compare').style.display = 'flex';
+  _stCompareRender();
+}
+function _stCloseCompareModal() {
+  document.getElementById('modal-st-compare').style.display = 'none';
+}
+async function _stCompareRender() {
+  const idA  = document.getElementById('st-compare-sel-a').value;
+  const idB  = document.getElementById('st-compare-sel-b').value;
+  const body = document.getElementById('st-compare-body');
+  if (!idA || !idB) { body.innerHTML = ''; return; }
+  body.innerHTML = '<div class="skeleton-block" style="height:80px;"></div>';
+
+  const [rA, rB] = await Promise.all([
+    authFetch(`/api/structures/${idA}`).then(r => r.json()),
+    authFetch(`/api/structures/${idB}`).then(r => r.json()),
+  ]);
+
+  body.innerHTML = `
+    <div class="st-compare-cols">
+      <div class="st-compare-col">
+        <div class="st-compare-col-hdr">Version ${rA.version} [${rA.status}]</div>
+        ${_stCompareMetaHtml(rA)}
+        ${_stCompareStepsHtml(rA.reward_steps||[], rB.reward_steps||[])}
+      </div>
+      <div class="st-compare-col">
+        <div class="st-compare-col-hdr">Version ${rB.version} [${rB.status}]</div>
+        ${_stCompareMetaHtml(rB)}
+        ${_stCompareStepsHtml(rB.reward_steps||[], rA.reward_steps||[])}
+      </div>
+    </div>`;
+}
+
+function _stCompareMetaHtml(s) {
+  return `
+    <div class="st-compare-meta">
+      <div><strong>Created:</strong> ${_stFmtTs(s.created_at)}</div>
+      <div><strong>By:</strong> ${_esc(s.created_by||'—')}</div>
+      <div><strong>Tracking:</strong> ${s.tracking_link ? `<a href="${_esc(s.tracking_link)}" target="_blank">link</a>` : '—'}</div>
+      <div><strong>IAP:</strong> ${(s.iap_events||[]).join(', ')||'—'}</div>
+    </div>`;
+}
+
+function _stCompareStepsHtml(stepsA, stepsB) {
+  const otherMap = {};
+  stepsB.forEach(r => { otherMap[r.goal] = r; });
+
+  const rows = stepsA.map(r => {
+    const other     = otherMap[r.goal];
+    const diffClass = !other ? 'st-diff-added'
+      : (JSON.stringify(r) !== JSON.stringify(other) ? 'st-diff-changed' : '');
+    return `<tr class="${diffClass}">
+      <td>${_esc(r.goal)}</td>
+      <td class="td-num">${r.expected_percent}</td>
+      <td class="td-num">${r.time_minutes}</td>
+      <td class="td-num td-mono">$${(+r.payout).toFixed(2)}</td>
+    </tr>`;
+  });
+
+  const thisGoals = new Set(stepsA.map(r => r.goal));
+  stepsB.forEach(r => {
+    if (!thisGoals.has(r.goal)) {
+      rows.push(`<tr class="st-diff-removed"><td>${_esc(r.goal)}</td><td class="td-num">—</td><td class="td-num">—</td><td class="td-num">—</td></tr>`);
+    }
+  });
+
+  return `
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th>Goal</th><th class="th-num">%</th><th class="th-num">Min</th><th class="th-num">Payout</th></tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+}
+
+function _stStructureSummaryHtml(s) {
+  return `
+    <div class="st-view-meta">
+      <span><strong>Publisher:</strong> ${_esc(s.publisher_id)}</span>
+      <span><strong>Offer:</strong> ${_esc(s.offer_name||s.offer_id)}</span>
+      <span><strong>Status:</strong> ${s.status}</span>
+      <span><strong>Steps:</strong> ${(s.reward_steps||[]).length}</span>
+    </div>`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function _stFmtTs(ts) {
+  if (!ts) return '—';
+  try {
+    return new Date(ts).toLocaleString('en-IN', {
+      day:'2-digit', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit', hour12:false,
+    });
+  } catch { return ts; }
+}
+
+function _esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function _showFormError(id, msg) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = msg; el.style.display = ''; }
+}
+function _clearFormError(id) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = ''; el.style.display = 'none'; }
+}
+

@@ -64,6 +64,7 @@ if REPO_BACKEND == "pg":
 _game_config_repo = RepositoryFactory.create_game_config_repo(REPO_BACKEND)
 _publisher_repo   = RepositoryFactory.create_publisher_repo(REPO_BACKEND)
 _partner_repo     = RepositoryFactory.create_partner_repo(REPO_BACKEND)
+_structure_repo   = RepositoryFactory.create_structure_repo(REPO_BACKEND)
 
 
 # ── Wire storage provider (Strategy pattern — swap local ↔ S3 via env var) ─────
@@ -539,6 +540,10 @@ _storage_provider = _get_storage_provider()
     sync_shared_lock=_sync_lock,
 )
 
+# ── Structure service (wired directly — no cross-service deps) ─────────────────
+from backend.services.structure import StructureService as _StructureService
+_structure_svc = _StructureService(repo=_structure_repo)
+
 
 # ── Attach services + shared objects to the Flask app ─────────────────────────
 # Blueprint route handlers access these via current_app.<name> (deps.py).
@@ -550,6 +555,7 @@ app.funnel_svc       = _funnel_svc       # type: ignore[attr-defined]
 app.sync_svc         = _sync_svc         # type: ignore[attr-defined]
 app.sync_engine      = _do_sync          # type: ignore[attr-defined]
 app.cache            = _cache            # type: ignore[attr-defined]
+app.structure_svc    = _structure_svc    # type: ignore[attr-defined]
 
 
 # ── Register blueprints ────────────────────────────────────────────────────────

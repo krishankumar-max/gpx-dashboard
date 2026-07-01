@@ -114,6 +114,47 @@ class PublisherRepository(ABC):
         """
 
 
+class StructureRepository(ABC):
+    """Persistence interface for publisher structure version records.
+
+    Structures are append-only — the delete() operation is intentionally
+    absent.  All history must be preserved; only status and timestamps
+    may change after creation.
+    """
+
+    @abstractmethod
+    def get_all_raw(self) -> list[dict]:
+        """Return all structure records as plain dicts."""
+
+    @abstractmethod
+    def save_all_raw(self, records: list[dict]) -> None:
+        """Persist a complete list of raw dicts (full replacement)."""
+
+    @abstractmethod
+    def get_by_id(self, sid: str) -> dict | None:
+        """Return a single structure by UUID, or None."""
+
+    @abstractmethod
+    def get_by_publisher_offer(self, publisher_id: str, offer_id: str) -> list[dict]:
+        """Return all structures for a (publisher_id, offer_id) pair, sorted by version asc."""
+
+    @abstractmethod
+    def get_live(self, publisher_id: str, offer_id: str) -> dict | None:
+        """Return the single live structure for this publisher+offer, or None."""
+
+    @abstractmethod
+    def next_version(self, publisher_id: str, offer_id: str) -> int:
+        """Return the next version number: max(existing versions) + 1, minimum 1."""
+
+    @abstractmethod
+    def create(self, data: dict) -> dict:
+        """Persist a new record and return the saved dict."""
+
+    @abstractmethod
+    def update(self, sid: str, data: dict) -> dict | None:
+        """Update status / timestamps on an existing record.  Returns updated dict or None."""
+
+
 class PartnerRepository(ABC):
     """Persistence interface for partner (portal user) records."""
 

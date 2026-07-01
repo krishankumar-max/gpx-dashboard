@@ -36,3 +36,7 @@ def sync_svc():
 def sync_engine():
     """Return the _do_sync callable (kept in app.py, stored on Flask app)."""
     return current_app.sync_engine  # type: ignore[attr-defined]
+
+
+def structure_svc():
+    return current_app.structure_svc  # type: ignore[attr-defined]

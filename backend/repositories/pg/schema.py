@@ -20,7 +20,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, JSON, String, Text, func,
+    Index, Integer, JSON, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -146,3 +146,45 @@ class SyncHistoryORM(Base):
 
     def __repr__(self) -> str:
         return f"<SyncHistory id={self.id!r} status={self.status!r}>"
+
+
+class PublisherStructureORM(Base):
+    """
+    One version of a publisher's reward structure for a specific game.
+
+    Structural payload columns (reward_steps, tracking_link, preview_url,
+    iap_events) are set at creation and never mutated.  Only status,
+    live_at, and paused_at change over the lifetime of a record.
+    """
+    __tablename__ = "publisher_structures"
+
+    id           = Column(String(36),   primary_key=True, default=lambda: str(uuid.uuid4()))
+    publisher_id = Column(String(50),   nullable=False)
+    offer_id     = Column(String(50),   nullable=False)
+    offer_name   = Column(String(255),  nullable=False, default="")
+    version      = Column(Integer,      nullable=False)
+    status       = Column(String(20),   nullable=False, default="pending")  # live|pending|paused
+
+    # Structural payload (immutable after creation)
+    reward_steps  = Column(JSON,          nullable=False, default=list)
+    tracking_link = Column(String(1000),  nullable=True,  default="")
+    preview_url   = Column(String(1000),  nullable=True,  default="")
+    iap_events    = Column(JSON,          nullable=False, default=list)
+
+    # Lifecycle timestamps
+    created_at = Column(String(50),  nullable=False)
+    live_at    = Column(String(50),  nullable=True)
+    paused_at  = Column(String(50),  nullable=True)
+    created_by = Column(String(255), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("publisher_id", "offer_id", "version", name="uq_ps_pub_offer_ver"),
+        Index("ix_ps_publisher_offer", "publisher_id", "offer_id"),
+        Index("ix_ps_status", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PublisherStructure publisher={self.publisher_id!r} "
+            f"offer={self.offer_id!r} v{self.version} {self.status!r}>"
+        )

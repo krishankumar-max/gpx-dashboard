@@ -19,9 +19,10 @@ def register_blueprints(app: Flask) -> None:
     from backend.routes.analytics_bp   import bp as analytics_bp
     from backend.routes.admin_bp       import bp as admin_bp
     from backend.routes.sync_bp        import bp as sync_bp
+    from backend.routes.structures_bp  import bp as structures_bp
 
     for blueprint in (
         auth_bp, core_bp, overview_bp, health_bp, publishers_bp,
-        offers_bp, analytics_bp, admin_bp, sync_bp,
+        offers_bp, analytics_bp, admin_bp, sync_bp, structures_bp,
     ):
         app.register_blueprint(blueprint)
