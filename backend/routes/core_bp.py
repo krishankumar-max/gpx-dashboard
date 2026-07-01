@@ -54,6 +54,18 @@ def simulator():
     return render_template("simulator.html", offer=offer)
 
 
+@bp.route("/api/simulator-data")
+def api_simulator_data():
+    import datetime as dt
+    offer = request.args.get("offer", "").strip()
+    if not offer:
+        return jsonify({"error": "offer parameter required", "publishers": []}), 400
+    today     = ist_today()
+    from_date = parse_date(request.args.get("from_date")) or (today - dt.timedelta(days=30))
+    to_date   = parse_date(request.args.get("to_date"))   or today
+    return jsonify(analytics_svc().get_simulator_data(offer, from_date, to_date))
+
+
 @bp.route("/")
 def index():
     dates      = available_dates()

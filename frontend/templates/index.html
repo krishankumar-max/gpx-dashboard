@@ -727,7 +727,7 @@
             </span>
             <button
               class="btn-outline-sm"
-              onclick="window.location.href='/simulator?offer='+encodeURIComponent(_opOffer||'')"
+              onclick="window.location.href='/simulator?offer='+encodeURIComponent(_opOffer||'')+(state.from_date?'&from_date='+encodeURIComponent(state.from_date):'')+(state.to_date?'&to_date='+encodeURIComponent(state.to_date):'')"
               title="Open RAI Allocation Simulator">
               <i class="fas fa-sliders" style="margin-right:5px"></i>Simulator
             </button>

@@ -1561,6 +1561,69 @@ class AnalyticsService:
             "offers":     {"gainers": og, "decliners": od,  "new": on_, "new_vs_existing": o_nve},
         }
 
+    def get_simulator_data(
+        self,
+        offer: str,
+        from_date: dt.date,
+        to_date: dt.date,
+    ) -> dict:
+        """
+        Return per-publisher simulator parameters for the RAI Allocation Simulator.
+
+        Each publisher entry contains:
+          n        : publisher name (partner field)
+          m        : GPX margin % — (revenue − payout) / revenue × 100, 1 dp
+          r        : effective ROAS % — revenue / payout × 100, 1 dp
+          installs : unique installs in the period (sort key)
+
+        Publishers are sorted by installs descending so the most active
+        publishers appear first in the simulator table.
+        """
+        df     = self.get_enriched_summary()
+        off_df = self.slice_summary(df, from_date, to_date, [], [offer], [])
+
+        if off_df.empty:
+            return {
+                "offer":      offer,
+                "publishers": [],
+                "from_date":  str(from_date),
+                "to_date":    str(to_date),
+            }
+
+        stats = (
+            off_df.groupby("partner", as_index=False)
+            .agg(
+                revenue =("revenue",          "sum"),
+                payout  =("payout",           "sum"),
+                installs=("unique_installs",   "sum"),
+            )
+        )
+        stats["installs"]   = stats["installs"].fillna(0).astype(int)
+        stats["profit"]     = stats["revenue"] - stats["payout"]
+        stats["margin_pct"] = (
+            stats["profit"] / stats["revenue"].replace(0, float("nan")) * 100
+        ).round(1).fillna(0)
+        stats["roas_pct"] = (
+            stats["revenue"] / stats["payout"].replace(0, float("nan")) * 100
+        ).round(1).fillna(100)
+
+        publishers = []
+        for _, row in stats.iterrows():
+            publishers.append({
+                "n":        str(row["partner"]),
+                "m":        round(float(row["margin_pct"]), 1),
+                "r":        round(float(row["roas_pct"]),   1),
+                "installs": int(row["installs"]),
+            })
+
+        publishers.sort(key=lambda x: -x["installs"])
+        return {
+            "offer":      offer,
+            "publishers": publishers,
+            "from_date":  str(from_date),
+            "to_date":    str(to_date),
+        }
+
     def funnel_data(
         self,
         offers: list[str],

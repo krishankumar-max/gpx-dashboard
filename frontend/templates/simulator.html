@@ -76,6 +76,15 @@ button:hover{background:var(--bg2)}
 .toggle{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:13px;cursor:pointer}
 .big{font-size:26px;font-weight:700;line-height:1.15}
 .yu input{background:#fffdf3}
+/* ── Loading state ────────────────────────────────────────────────────── */
+.sim-loading{
+  display:none;padding:18px 20px;text-align:center;
+  color:var(--tx2);font-size:13px;
+  background:var(--bg);border:1px solid var(--bd);border-radius:var(--rlg);
+  margin-bottom:12px;
+}
+/* ── Draggable bar hint ───────────────────────────────────────────────── */
+.bar-drag-hint{font-size:11px;color:var(--tx3);margin:0 2px 10px;display:none}
 </style>
 </head>
 <body>
@@ -118,6 +127,10 @@ button:hover{background:var(--bg2)}
     <h3 style="margin:0">Publisher mix</h3>
     <div><button id="b-rec" style="margin-right:6px">Reset to recommendation</button><button id="b-add">+ Add publisher</button></div>
   </div>
+
+  <!-- Loading indicator — shown while fetching real publisher data -->
+  <div id="sim-loading" class="sim-loading"></div>
+
   <div class="scroll">
     <table>
       <thead><tr>
@@ -128,25 +141,25 @@ button:hover{background:var(--bg2)}
       <tbody id="tb"></tbody>
     </table>
   </div>
-  <p class="note">Rec. units = what the model recommends from RAI. Your units = conversions you choose to run (blank = follow the recommendation). Plan profit reflects Your units. Break-even = Client KPI ÷ (1 − margin); ▼ marks clawback.</p>
+  <p class="note">Rec. units = what the model recommends from RAI. Your units = conversions you choose to run (blank = follow the recommendation). Plan profit reflects Your units. Break-even = Client KPI ÷ (1 − margin); ▼ marks clawback. Drag the plan bars below to set Your units interactively.</p>
 
   <h3 style="margin:24px 0 10px">Model recommendation vs your plan</h3>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px">
     <div class="card" style="border-left:4px solid var(--tx3)">
       <div style="font-size:13px;font-weight:600;color:var(--tx2);margin-bottom:10px">Model recommendation</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap">
-        <div><div class="l">Effective ROAS</div><div class="big" id="rec-roas">125%</div></div>
-        <div><div class="l">Effective RAI</div><div class="big" id="rec-rai">1.00x</div></div>
-        <div><div class="l">Effective net margin</div><div class="big" id="rec-m">20%</div></div>
+        <div><div class="l">Effective ROAS</div><div class="big" id="rec-roas">—</div></div>
+        <div><div class="l">Effective RAI</div><div class="big" id="rec-rai">—</div></div>
+        <div><div class="l">Effective net margin</div><div class="big" id="rec-m">—</div></div>
       </div>
       <div style="margin-top:10px;font-size:13px;color:var(--tx2)">Profit <b id="rec-prof" style="color:var(--tx)">$0</b> · <span id="rec-units">0</span> of <span id="o-cap2">0</span> units · <span id="rec-res">0</span> reserve</div>
     </div>
     <div class="card" id="card-plan" style="border-left:4px solid var(--accent)">
       <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:10px">Your plan</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap">
-        <div><div class="l">Effective ROAS</div><div class="big" id="plan-roas">125%</div><div class="l" id="plan-roas-d"></div></div>
-        <div><div class="l">Effective RAI</div><div class="big" id="plan-rai">1.00x</div><div class="l" id="plan-rai-d"></div></div>
-        <div><div class="l">Effective net margin</div><div class="big" id="plan-m">20%</div><div class="l" id="plan-m-d"></div></div>
+        <div><div class="l">Effective ROAS</div><div class="big" id="plan-roas">—</div><div class="l" id="plan-roas-d"></div></div>
+        <div><div class="l">Effective RAI</div><div class="big" id="plan-rai">—</div><div class="l" id="plan-rai-d"></div></div>
+        <div><div class="l">Effective net margin</div><div class="big" id="plan-m">—</div><div class="l" id="plan-m-d"></div></div>
       </div>
       <div style="margin-top:10px;font-size:13px;color:var(--tx2)">Profit <b id="plan-prof" style="color:var(--tx)">$0</b> <span id="plan-prof-d"></span> · <span id="plan-units">0</span> units · <span id="plan-res">0</span> reserve <span id="plan-over" style="color:var(--tx-bad)"></span></div>
     </div>
@@ -154,232 +167,542 @@ button:hover{background:var(--bg2)}
   <div id="o-takeaway" style="margin:12px 2px 0;font-size:13px;color:var(--tx)"></div>
 
   <div class="grid-mc" style="margin-top:14px">
-    <div class="mc"><div class="l">Capacity used (plan)</div><div class="v" id="o-util">40%</div></div>
-    <div class="mc"><div class="l">Reserve (plan)</div><div class="v" id="o-res">240</div></div>
-    <div class="mc"><div class="l">Total payout (plan)</div><div class="v" id="o-pay">$640</div></div>
-    <div class="mc"><div class="l">Realised revenue (plan)</div><div class="v" id="o-rev">$800</div></div>
-    <div class="mc"><div class="l">Clawback loss (plan)</div><div class="v" id="o-claw">$0</div></div>
+    <div class="mc"><div class="l">Capacity used (plan)</div><div class="v" id="o-util">—</div></div>
+    <div class="mc"><div class="l">Reserve (plan)</div><div class="v" id="o-res">—</div></div>
+    <div class="mc"><div class="l">Total payout (plan)</div><div class="v" id="o-pay">—</div></div>
+    <div class="mc"><div class="l">Realised revenue (plan)</div><div class="v" id="o-rev">—</div></div>
+    <div class="mc"><div class="l">Clawback loss (plan)</div><div class="v" id="o-claw">—</div></div>
   </div>
 
   <h3 style="margin:24px 0 10px">Recommended conversion allocation</h3>
   <div id="bars-rec"></div>
 
-  <h3 style="margin:24px 0 10px">Conversion allocation (your plan)</h3>
+  <h3 style="margin:24px 0 6px">Conversion allocation (your plan)</h3>
+  <p class="bar-drag-hint" id="drag-hint">← Drag a bar left or right to set Your units for that publisher →</p>
   <div id="bars"></div>
 </div>
 
 <script>
 (function(){
-  var fmtMoney=function(n){return (n<0?"−$":"$")+Math.abs(Math.round(n)).toLocaleString();};
-  var fmtX=function(n){return (Math.round(n*100)/100).toFixed(2)+'x';};
-  var fmtInt=function(n){return Math.round(n).toLocaleString();};
-  var pct=function(n){return Math.round(n*100)+'%';};
-  var letters="HIJKLMNOPQRSTUVWXYZ";
+"use strict";
 
-  var state={budget:2000,R:5,K:1.00,tm:0.20,thr:0.85,conc:0.40,redistribute:true,
-    pubs:[{n:"Pub A",m:24,r:140},{n:"Pub B",m:22,r:135},{n:"Pub C",m:18,r:120},
-          {n:"Pub D",m:20,r:124},{n:"Pub E",m:16,r:145},{n:"Pub F",m:28,r:150},{n:"Pub G",m:25,r:128}]};
-  state.pubs.forEach(function(p){p.maxcap=NaN;p.io=NaN;p.fr=NaN;p.yu=NaN;});
+// ── Formatters ────────────────────────────────────────────────────────────────
+var fmtMoney = function(n){ return (n<0?"−$":"$")+Math.abs(Math.round(n)).toLocaleString(); };
+var fmtX     = function(n){ return (Math.round(n*100)/100).toFixed(2)+'x'; };
+var fmtInt   = function(n){ return Math.round(n).toLocaleString(); };
+var pct      = function(n){ return Math.round(n*100)+'%'; };
 
-  function waterfill(w,caps,cap){
-    var n=w.length, alloc=w.map(function(){return 0;});
-    var active=w.map(function(x,i){return x>1e-12 && caps[i]>1e-12;});
-    var remaining=cap;
-    for(var g=0; g<n+3 && remaining>1e-9; g++){
-      var idx=[]; for(var i=0;i<n;i++) if(active[i]) idx.push(i);
-      if(!idx.length) break;
-      var sw=0; idx.forEach(function(i){sw+=w[i];});
-      if(sw<=0) break;
-      var binders=idx.filter(function(i){return alloc[i]+remaining*w[i]/sw > caps[i]+1e-9;});
-      if(!binders.length){ idx.forEach(function(i){alloc[i]+=remaining*w[i]/sw;}); remaining=0; }
-      else { binders.forEach(function(i){ remaining-=(caps[i]-alloc[i]); alloc[i]=caps[i]; active[i]=false; }); }
-    }
-    return alloc;
-  }
-  function roundAlloc(a){
-    var fl=a.map(Math.floor);
-    var target=Math.round(a.reduce(function(s,x){return s+x;},0));
-    var sumf=fl.reduce(function(s,x){return s+x;},0);
-    var rem=target-sumf;
-    var order=a.map(function(x,i){return {i:i,f:x-fl[i]};}).sort(function(p,q){return q.f-p.f;});
-    for(var k=0;k<rem && k<order.length;k++) fl[order[k].i]++;
-    return fl;
-  }
-  function totals(rows,units,cap,R,tm){
-    var T={units:0,payout:0,rev:0,nom:0,profit:0};
-    rows.forEach(function(x,i){var u=units[i]||0;T.units+=u;T.payout+=u*x.payout;T.rev+=u*x.realRevU;T.nom+=u*R;T.profit+=u*(x.realRevU-x.payout);});
-    T.reserve=Math.max(0,Math.round(cap)-T.units); T.over=Math.max(0,T.units-Math.round(cap));
-    T.claw=T.nom-T.rev; T.netm=T.rev>0?T.profit/T.rev:0; T.effrai=tm>0?T.netm/tm:0; T.effroas=T.payout>0?T.rev/T.payout:0;
-    return T;
-  }
+// ── Offer name — injected by Jinja2, never hardcoded ──────────────────────────
+var _offer = {{ offer|tojson }};
 
-  function compute(){
-    var cap=state.R>0? state.budget/state.R:0;
-    var tm=state.tm, K=state.K, R=state.R;
-    var rows=state.pubs.map(function(p){
-      var m=p.m/100, a=p.r/100;
-      var valid=(p.n||"").trim()!=="" && isFinite(m) && isFinite(a) && a>0;
-      var be=valid?(K>0?K/(1-m):0):NaN;
-      var studioROAS=valid?a*(1-m):0;
-      var retention=valid?(K>0?Math.min(1,studioROAS/K):1):0;
-      var payout=valid?R*(1-m):0;
-      var realRevU=valid?R*retention:0;
-      var realM=(valid&&realRevU>0)?(realRevU-payout)/realRevU:-9;
-      var initRAI=valid?realM/tm:NaN;
-      var eff=isFinite(p.fr)?p.fr:(isFinite(p.io)?p.io:initRAI);
-      var below=valid&&retention<1-1e-9;
-      return {p:p,m:m,a:a,valid:valid,be:be,payout:payout,realRevU:realRevU,realM:realM,initRAI:initRAI,eff:eff,below:below};
-    });
-    var w=rows.map(function(x){return (x.valid&&isFinite(x.eff)&&x.eff>=state.thr)?Math.max(x.eff,0):0;});
-    var caps=rows.map(function(x){var c=Infinity;if(isFinite(x.p.maxcap)&&x.p.maxcap>0)c=Math.min(c,x.p.maxcap);if(state.conc>0&&state.conc<1)c=Math.min(c,state.conc*cap);return c;});
-    var raw;
-    if(state.redistribute){raw=waterfill(w,caps,cap);}
-    else {var sw=w.reduce(function(s,x){return s+x;},0);raw=w.map(function(x,i){return sw>0?Math.min(cap*x/sw,caps[i]):0;});}
-    var recUnits=roundAlloc(raw);
-    var planUnits=rows.map(function(x,i){return isFinite(x.p.yu)?Math.max(0,Math.round(x.p.yu)):recUnits[i];});
-    var recT=totals(rows,recUnits,cap,R,tm);
-    var planT=totals(rows,planUnits,cap,R,tm);
-    return {rows:rows,recUnits:recUnits,planUnits:planUnits,recT:recT,planT:planT,cap:cap};
-  }
+// ── Single source of truth ────────────────────────────────────────────────────
+// state.pubs is populated from /api/simulator-data on load.
+// ALL calculations derive exclusively from state — no secondary caches.
+var state = {
+  budget: 2000, R: 5, K: 1.00, tm: 0.20, thr: 0.85, conc: 0.40,
+  redistribute: true,
+  pubs: []  // [{n, m, r, maxcap, io, fr, yu}, ...]
+};
 
-  function tierOf(eff){ if(!isFinite(eff)) return null; if(eff>=1)return"Good"; if(eff>=0.85)return"Neutral"; return"Bad"; }
-  function tierBg(t){ return t==="Good"?"var(--bg-good)":t==="Neutral"?"var(--bg-neu)":"var(--bg-bad)"; }
-  function tierTx(t){ return t==="Good"?"var(--tx-good)":t==="Neutral"?"var(--tx-neu)":"var(--tx-bad)"; }
-  function set(id,txt,color){var el=document.getElementById(id);if(!el)return;el.textContent=txt;if(color!==undefined)el.style.color=color;}
+// ── Allocation engine ─────────────────────────────────────────────────────────
 
-  var tb=document.getElementById("tb");
-  function buildRows(){
-    tb.innerHTML=state.pubs.map(function(p,i){
-      var ov=function(v){return isFinite(v)?v:"";};
-      return '<tr>'+
-        '<td><input data-i="'+i+'" data-f="n" type="text" value="'+(p.n||"").replace(/"/g,"&quot;")+'" style="width:90px;text-align:left"></td>'+
-        '<td><input data-i="'+i+'" data-f="m" type="number" step="0.5" value="'+p.m+'" style="width:54px"></td>'+
-        '<td><input data-i="'+i+'" data-f="r" type="number" step="1" value="'+p.r+'" style="width:58px"></td>'+
-        '<td data-o="be" data-i="'+i+'" style="color:var(--tx2)"></td>'+
-        '<td><input data-i="'+i+'" data-f="maxcap" type="number" step="10" value="'+ov(p.maxcap)+'" placeholder="—" style="width:56px"></td>'+
-        '<td data-o="init" data-i="'+i+'"></td>'+
-        '<td><input data-i="'+i+'" data-f="io" type="number" step="0.01" value="'+ov(p.io)+'" placeholder="—" style="width:52px"></td>'+
-        '<td><input data-i="'+i+'" data-f="fr" type="number" step="0.01" value="'+ov(p.fr)+'" placeholder="—" style="width:56px"></td>'+
-        '<td data-o="eff" data-i="'+i+'"></td>'+
-        '<td data-o="tier" data-i="'+i+'"></td>'+
-        '<td data-o="recu" data-i="'+i+'" style="color:var(--tx2)"></td>'+
-        '<td class="yu"><input data-i="'+i+'" data-f="yu" type="number" step="1" value="'+ov(p.yu)+'" placeholder="—" style="width:62px"></td>'+
-        '<td data-o="planprof" data-i="'+i+'" style="font-weight:600"></td>'+
-        '<td><button class="rm" data-rm="'+i+'" title="Remove">✕</button></td>'+
-      '</tr>';
-    }).join("");
-    tb.querySelectorAll("input").forEach(function(el){
-      el.addEventListener("input",function(){
-        var i=+el.dataset.i, f=el.dataset.f, v=el.value;
-        if(f==="n") state.pubs[i].n=v;
-        else { var num=parseFloat(v); state.pubs[i][f]=(v===""||isNaN(num))?NaN:num; }
-        recompute();
+function waterfill(w, caps, cap) {
+  var n = w.length, alloc = w.map(function(){ return 0; });
+  var active = w.map(function(x, i){ return x > 1e-12 && caps[i] > 1e-12; });
+  var remaining = cap;
+  for (var g = 0; g < n + 3 && remaining > 1e-9; g++) {
+    var idx = []; for (var i = 0; i < n; i++) if (active[i]) idx.push(i);
+    if (!idx.length) break;
+    var sw = 0; idx.forEach(function(i){ sw += w[i]; });
+    if (sw <= 0) break;
+    var binders = idx.filter(function(i){ return alloc[i] + remaining * w[i] / sw > caps[i] + 1e-9; });
+    if (!binders.length) {
+      idx.forEach(function(i){ alloc[i] += remaining * w[i] / sw; });
+      remaining = 0;
+    } else {
+      binders.forEach(function(i){
+        remaining -= (caps[i] - alloc[i]); alloc[i] = caps[i]; active[i] = false;
       });
-    });
-    tb.querySelectorAll("[data-rm]").forEach(function(b){
-      b.addEventListener("click",function(){ state.pubs.splice(+b.dataset.rm,1); buildRows(); recompute(); });
-    });
-  }
-  function setCell(o,i,html,color){var el=tb.querySelector('[data-o="'+o+'"][data-i="'+i+'"]');if(!el)return;el.innerHTML=html;if(o==="eff"||o==="planprof")el.style.color=color||"";}
-
-  function renderBars(containerId, rows, units, reserve, cap){
-    var html=rows.map(function(x,i){return {x:x,u:units[i]||0};}).filter(function(o){return o.u>0;}).sort(function(a,b){return b.u-a.u;}).map(function(o){
-      var t=tierOf(o.x.eff), wpct=Math.max(2,Math.round(o.u/(cap||1)*100));
-      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
-        '<div style="width:64px;flex:none;text-align:right;font-size:12px;color:var(--tx2)">'+o.x.p.n+'</div>'+
-        '<div style="flex:1;background:var(--bg2);border-radius:var(--rmd);height:20px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,wpct)+'%;background:'+tierTx(t)+';border-radius:var(--rmd)"></div></div>'+
-        '<div style="width:84px;flex:none;font-size:13px;font-weight:600">'+fmtInt(o.u)+' <span style="color:var(--tx3);font-weight:400">'+pct(o.u/(cap||1))+'</span></div></div>';
-    }).join("");
-    if(reserve>0){
-      var rp=Math.max(2,Math.round(reserve/(cap||1)*100));
-      html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><div style="width:64px;flex:none;text-align:right;font-size:12px;color:var(--tx2)">Reserve</div>'+
-        '<div style="flex:1;background:var(--bg2);border-radius:var(--rmd);height:20px;overflow:hidden"><div style="height:100%;width:'+rp+'%;background:var(--tx3);border-radius:var(--rmd)"></div></div>'+
-        '<div style="width:84px;flex:none;font-size:13px;font-weight:600">'+fmtInt(reserve)+' <span style="color:var(--tx3);font-weight:400">'+pct(reserve/(cap||1))+'</span></div></div>';
     }
-    document.getElementById(containerId).innerHTML=html || '<p style="font-size:13px;color:var(--tx3)">No publishers funded — lower the threshold, add publishers, or enter Your units.</p>';
   }
+  return alloc;
+}
 
-  function recompute(){
-    var res=compute(), recT=res.recT, planT=res.planT, cap=res.cap;
-    set("o-troas", state.tm<1? pct(state.K/(1-state.tm)) : "—");
-    set("o-cap", fmtInt(cap)); set("o-cap2", fmtInt(cap));
-    res.rows.forEach(function(x,i){
-      var t=tierOf(x.eff);
-      var dn=x.below? ' <span title="Below break-even — revenue clawed back" style="color:var(--tx-neu);font-size:11px">▼</span>':"";
-      setCell("be",i, x.valid? pct(x.be):"—");
-      setCell("init",i, x.valid? fmtX(x.initRAI):"—");
-      setCell("eff",i, isFinite(x.eff)? fmtX(x.eff):"—", t?tierTx(t):null);
-      setCell("tier",i, t? '<span class="badge" style="background:'+tierBg(t)+';color:'+tierTx(t)+'">'+t+'</span>'+dn : "");
-      setCell("recu",i, fmtInt(res.recUnits[i]||0));
-      var pu=res.planUnits[i]||0, pprof=pu*(x.realRevU-x.payout);
-      setCell("planprof",i, pu? fmtMoney(pprof):"$0", (pprof<0?"var(--tx-bad)":""));
-    });
+function roundAlloc(a) {
+  var fl = a.map(Math.floor);
+  var target = Math.round(a.reduce(function(s, x){ return s + x; }, 0));
+  var sumf = fl.reduce(function(s, x){ return s + x; }, 0);
+  var rem = target - sumf;
+  var order = a.map(function(x, i){ return { i: i, f: x - fl[i] }; })
+               .sort(function(p, q){ return q.f - p.f; });
+  for (var k = 0; k < rem && k < order.length; k++) fl[order[k].i]++;
+  return fl;
+}
 
-    // recommendation card
-    set("rec-roas", recT.units&&recT.payout>0? pct(recT.effroas):"—");
-    set("rec-rai", recT.units? fmtX(recT.effrai):"—");
-    set("rec-m", recT.units? pct(recT.netm):"—");
-    set("rec-prof", fmtMoney(recT.profit)); set("rec-units", fmtInt(recT.units)); set("rec-res", fmtInt(recT.reserve));
-
-    // plan card
-    set("plan-roas", planT.units&&planT.payout>0? pct(planT.effroas):"—");
-    set("plan-rai", planT.units? fmtX(planT.effrai):"—");
-    set("plan-m", planT.units? pct(planT.netm):"—");
-    set("plan-prof", fmtMoney(planT.profit)); set("plan-units", fmtInt(planT.units)); set("plan-res", fmtInt(planT.reserve));
-    set("plan-over", planT.over>0? ("⚠ over capacity by "+fmtInt(planT.over)):"");
-
-    // deltas vs recommendation
-    function delta(id,val,unit,better){
-      var el=document.getElementById(id);
-      var pos=val>=0; var s=(pos?"+":"−")+ (unit==="x"?(Math.round(Math.abs(val)*100)/100).toFixed(2)+"x" : unit==="pts"?Math.round(Math.abs(val))+" pts" : "")+(unit==="x"||unit==="pts"?"":"");
-      el.textContent="("+s+" vs rec)";
-      el.style.color = (val===0)?"var(--tx3)":((better===pos)?"var(--tx-good)":"var(--tx-neu)");
-    }
-    delta("plan-roas-d", (planT.effroas-recT.effroas)*100, "pts", true);
-    delta("plan-rai-d", (planT.effrai-recT.effrai), "x", true);
-    delta("plan-m-d", (planT.netm-recT.netm)*100, "pts", true);
-    var dp=planT.profit-recT.profit;
-    var pd=document.getElementById("plan-prof-d"); pd.textContent="("+(dp>=0?"+":"−")+fmtMoney(Math.abs(dp)).replace("−","")+" vs rec)"; pd.style.color=dp>=0?"var(--tx-good)":"var(--tx-neu)";
-
-    // takeaway
-    var dU=planT.units-recT.units;
-    var same = dU===0 && Math.abs(dp)<0.5;
-    var tk=document.getElementById("o-takeaway");
-    if(same){ tk.textContent=”Your plan matches the model’s recommendation. Type conversions in \”Your units\” to test running a different mix (e.g. a publisher the model benched).”; }
-    else {
-      var dRai=planT.effrai-recT.effrai, dM=Math.round((planT.netm-recT.netm)*100);
-      var vol=dU>=0?("runs "+fmtInt(dU)+" more units"):("runs "+fmtInt(-dU)+" fewer units");
-      var prof=(dp>=0?"adds ":"gives up ")+fmtMoney(Math.abs(dp)).replace("−","")+" of profit";
-      var rate="effective RAI "+(dRai>=0?"+":"")+(Math.round(dRai*100)/100).toFixed(2)+"x, net margin "+(dM>=0?"+":"")+dM+" pts";
-      tk.textContent="Versus the model’s pick, your plan "+vol+" and "+prof+" — at "+rate+"."+(planT.over>0?" Note: this exceeds your budget capacity.":"");
-    }
-
-    // supporting (plan)
-    set("o-util", cap>0? pct(planT.units/cap):"0%");
-    set("o-res", fmtInt(planT.reserve)); set("o-pay", fmtMoney(planT.payout));
-    set("o-rev", fmtMoney(planT.rev)); set("o-claw", fmtMoney(planT.claw));
-
-    // bars: recommended + your plan
-    renderBars("bars-rec", res.rows, res.recUnits, recT.reserve, cap);
-    renderBars("bars", res.rows, res.planUnits, planT.reserve, cap);
-  }
-
-  document.getElementById("i-budget").addEventListener("input",function(e){state.budget=parseFloat(e.target.value)||0;recompute();});
-  document.getElementById("i-rate").addEventListener("input",function(e){state.R=parseFloat(e.target.value)||0;recompute();});
-  document.getElementById("s-cli").addEventListener("input",function(e){state.K=(+e.target.value)/100;document.getElementById("o-cli").textContent=e.target.value+'%';recompute();});
-  document.getElementById("s-tm").addEventListener("input",function(e){state.tm=(+e.target.value)/100;document.getElementById("o-tm").textContent=e.target.value+'%';recompute();});
-  document.getElementById("s-thr").addEventListener("input",function(e){state.thr=+e.target.value;document.getElementById("o-thr").textContent=fmtX(state.thr);recompute();});
-  document.getElementById("s-conc").addEventListener("input",function(e){state.conc=(+e.target.value)/100;document.getElementById("o-conc").textContent=e.target.value+'%';recompute();});
-  document.getElementById("c-redist").addEventListener("change",function(e){state.redistribute=e.target.checked;recompute();});
-  document.getElementById("b-add").addEventListener("click",function(){
-    var idx=state.pubs.length; var nm="Pub "+(letters[idx-7]||(idx+1));
-    state.pubs.push({n:nm,m:20,r:130,maxcap:NaN,io:NaN,fr:NaN,yu:NaN}); buildRows(); recompute();
+function totals(rows, units, cap, R, tm) {
+  var T = { units: 0, payout: 0, rev: 0, nom: 0, profit: 0 };
+  rows.forEach(function(x, i) {
+    var u = units[i] || 0;
+    T.units  += u;
+    T.payout += u * x.payout;
+    T.rev    += u * x.realRevU;
+    T.nom    += u * R;
+    T.profit += u * (x.realRevU - x.payout);
   });
-  document.getElementById("b-rec").addEventListener("click",function(){
-    state.pubs.forEach(function(p){p.yu=NaN;}); buildRows(); recompute();
+  T.reserve  = Math.max(0, Math.round(cap) - T.units);
+  T.over     = Math.max(0, T.units - Math.round(cap));
+  T.claw     = T.nom - T.rev;
+  T.netm     = T.rev > 0 ? T.profit / T.rev : 0;
+  T.effrai   = tm > 0 ? T.netm / tm : 0;
+  T.effroas  = T.payout > 0 ? T.rev / T.payout : 0;
+  return T;
+}
+
+function compute() {
+  var cap = state.R > 0 ? state.budget / state.R : 0;
+  var tm = state.tm, K = state.K, R = state.R;
+
+  var rows = state.pubs.map(function(p) {
+    var m = p.m / 100, a = p.r / 100;
+    var valid = (p.n || "").trim() !== "" && isFinite(m) && isFinite(a) && a > 0;
+    var be         = valid ? (K > 0 ? K / (1 - m) : 0) : NaN;
+    var studioROAS = valid ? a * (1 - m) : 0;
+    var retention  = valid ? (K > 0 ? Math.min(1, studioROAS / K) : 1) : 0;
+    var payout     = valid ? R * (1 - m) : 0;
+    var realRevU   = valid ? R * retention : 0;
+    var realM      = (valid && realRevU > 0) ? (realRevU - payout) / realRevU : -9;
+    var initRAI    = valid ? realM / tm : NaN;
+    // Override chain: Final RAI → Init override → model initRAI
+    var eff        = isFinite(p.fr) ? p.fr : (isFinite(p.io) ? p.io : initRAI);
+    var below      = valid && retention < 1 - 1e-9;
+    return { p: p, m: m, a: a, valid: valid, be: be, payout: payout,
+             realRevU: realRevU, realM: realM, initRAI: initRAI, eff: eff, below: below };
   });
 
-  buildRows(); recompute();
+  var w = rows.map(function(x) {
+    return (x.valid && isFinite(x.eff) && x.eff >= state.thr) ? Math.max(x.eff, 0) : 0;
+  });
+
+  // conc >= 1 means no concentration cap (any publisher can receive full capacity)
+  var caps = rows.map(function(x) {
+    var c = Infinity;
+    if (isFinite(x.p.maxcap) && x.p.maxcap > 0) c = Math.min(c, x.p.maxcap);
+    if (state.conc > 0 && state.conc < 1)        c = Math.min(c, state.conc * cap);
+    return c;
+  });
+
+  var raw;
+  if (state.redistribute) {
+    raw = waterfill(w, caps, cap);
+  } else {
+    var sw = w.reduce(function(s, x){ return s + x; }, 0);
+    raw = w.map(function(x, i){ return sw > 0 ? Math.min(cap * x / sw, caps[i]) : 0; });
+  }
+
+  var recUnits  = roundAlloc(raw);
+  // planUnits: explicit yu overrides recommendation; if yu is unset follow model
+  var planUnits = rows.map(function(x, i) {
+    return isFinite(x.p.yu) ? Math.max(0, Math.round(x.p.yu)) : recUnits[i];
+  });
+
+  var recT  = totals(rows, recUnits,  cap, R, tm);
+  var planT = totals(rows, planUnits, cap, R, tm);
+  return { rows: rows, recUnits: recUnits, planUnits: planUnits, recT: recT, planT: planT, cap: cap };
+}
+
+// ── Tier helpers ──────────────────────────────────────────────────────────────
+function tierOf(eff) {
+  if (!isFinite(eff)) return null;
+  if (eff >= 1)    return "Good";
+  if (eff >= 0.85) return "Neutral";
+  return "Bad";
+}
+function tierBg(t) { return t==="Good"?"var(--bg-good)":t==="Neutral"?"var(--bg-neu)":"var(--bg-bad)"; }
+function tierTx(t) { return t==="Good"?"var(--tx-good)":t==="Neutral"?"var(--tx-neu)":"var(--tx-bad)"; }
+
+function set(id, txt, color) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = txt;
+  if (color !== undefined) el.style.color = color;
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+var tb = document.getElementById("tb");
+
+function buildRows() {
+  tb.innerHTML = state.pubs.map(function(p, i) {
+    var ov = function(v){ return isFinite(v) ? v : ""; };
+    return '<tr>' +
+      '<td><input data-i="'+i+'" data-f="n" type="text" value="'+(p.n||"").replace(/"/g,"&quot;")+'" style="width:90px;text-align:left"></td>' +
+      '<td><input data-i="'+i+'" data-f="m" type="number" step="0.5" value="'+p.m+'" style="width:54px"></td>' +
+      '<td><input data-i="'+i+'" data-f="r" type="number" step="1" value="'+p.r+'" style="width:58px"></td>' +
+      '<td data-o="be" data-i="'+i+'" style="color:var(--tx2)"></td>' +
+      '<td><input data-i="'+i+'" data-f="maxcap" type="number" step="10" value="'+ov(p.maxcap)+'" placeholder="—" style="width:56px"></td>' +
+      '<td data-o="init" data-i="'+i+'"></td>' +
+      '<td><input data-i="'+i+'" data-f="io" type="number" step="0.01" value="'+ov(p.io)+'" placeholder="—" style="width:52px"></td>' +
+      '<td><input data-i="'+i+'" data-f="fr" type="number" step="0.01" value="'+ov(p.fr)+'" placeholder="—" style="width:56px"></td>' +
+      '<td data-o="eff" data-i="'+i+'"></td>' +
+      '<td data-o="tier" data-i="'+i+'"></td>' +
+      '<td data-o="recu" data-i="'+i+'" style="color:var(--tx2)"></td>' +
+      '<td class="yu"><input data-i="'+i+'" data-f="yu" type="number" step="1" value="'+ov(p.yu)+'" placeholder="—" style="width:62px"></td>' +
+      '<td data-o="planprof" data-i="'+i+'" style="font-weight:600"></td>' +
+      '<td><button class="rm" data-rm="'+i+'" title="Remove">✕</button></td>' +
+    '</tr>';
+  }).join("");
+
+  tb.querySelectorAll("input").forEach(function(el) {
+    el.addEventListener("input", function() {
+      var i = +el.dataset.i, f = el.dataset.f, v = el.value;
+      if (f === "n") state.pubs[i].n = v;
+      else { var num = parseFloat(v); state.pubs[i][f] = (v === "" || isNaN(num)) ? NaN : num; }
+      recompute();
+    });
+  });
+
+  tb.querySelectorAll("[data-rm]").forEach(function(b) {
+    b.addEventListener("click", function() {
+      state.pubs.splice(+b.dataset.rm, 1);
+      buildRows();
+      recompute();
+    });
+  });
+}
+
+function setCell(o, i, html, color) {
+  var el = tb.querySelector('[data-o="'+o+'"][data-i="'+i+'"]');
+  if (!el) return;
+  el.innerHTML = html;
+  if (o === "eff" || o === "planprof") el.style.color = color || "";
+}
+
+// ── Interactive drag bars ─────────────────────────────────────────────────────
+// Drag is handled via pointer capture on the FIXED #bars container.
+// renderBars() rebuilds innerHTML but the container element itself persists,
+// so all listeners and pointer capture survive DOM rebuilds.
+
+var _drag = null;   // { pidx: int } | null
+var _barsEl = document.getElementById("bars");
+
+_barsEl.addEventListener("pointerdown", function(e) {
+  // Identify which publisher bar track was pressed
+  var track = e.target.closest ? e.target.closest("[data-pidx]") : null;
+  if (!track) return;
+  _drag = { pidx: +track.dataset.pidx };
+  _barsEl.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+_barsEl.addEventListener("pointermove", function(e) {
+  if (!_drag) return;
+  var cap = state.R > 0 ? state.budget / state.R : 0;
+  if (cap <= 0) return;
+  // Re-query the track element (may have been rebuilt by recompute)
+  var track = _barsEl.querySelector('[data-pidx="' + _drag.pidx + '"]');
+  if (!track || !state.pubs[_drag.pidx]) return;
+  var rect = track.getBoundingClientRect();
+  var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  var newUnits = Math.round(frac * cap);
+  // Store 0 explicitly (user intentionally benching a publisher by dragging to left)
+  state.pubs[_drag.pidx].yu = newUnits;
+  recompute();
+});
+
+_barsEl.addEventListener("pointerup",     function() { _drag = null; });
+_barsEl.addEventListener("pointercancel", function() { _drag = null; });
+
+function renderBars(containerId, rows, units, reserve, cap, draggable) {
+  // Plan bars (draggable): show all valid publishers including those with 0 units
+  // so the user can drag any publisher to allocate to it.
+  // Rec bars (non-draggable): show only funded publishers (u > 0).
+  var pubList = rows.map(function(x, i) { return { x: x, u: units[i] || 0, i: i }; });
+  if (!draggable) {
+    pubList = pubList.filter(function(o) { return o.u > 0; });
+  } else {
+    pubList = pubList.filter(function(o) { return o.x.valid; });
+  }
+
+  var html = pubList.sort(function(a, b) { return b.u - a.u; }).map(function(o) {
+    var t    = tierOf(o.x.eff);
+    var wpct = o.u > 0 ? Math.max(2, Math.round(o.u / (cap || 1) * 100)) : 0;
+    var fillColor = (o.u > 0 && t) ? tierTx(t) : "var(--bd2)";
+
+    var trackExtra = draggable
+      ? 'data-pidx="' + o.i + '" title="Drag to set Your units" style="flex:1;background:var(--bg2);border-radius:var(--rmd);height:24px;overflow:hidden;cursor:ew-resize;touch-action:none;user-select:none"'
+      : 'style="flex:1;background:var(--bg2);border-radius:var(--rmd);height:24px;overflow:hidden"';
+
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+      '<div style="width:64px;flex:none;text-align:right;font-size:12px;color:var(--tx2)">' + o.x.p.n + '</div>' +
+      '<div ' + trackExtra + '><div style="height:100%;width:' + Math.min(100, wpct) + '%;background:' + fillColor + ';border-radius:var(--rmd);pointer-events:none"></div></div>' +
+      '<div style="width:84px;flex:none;font-size:13px;font-weight:600">' + fmtInt(o.u) + ' <span style="color:var(--tx3);font-weight:400">' + pct(o.u / (cap || 1)) + '</span></div>' +
+    '</div>';
+  }).join("");
+
+  if (reserve > 0) {
+    var rp = Math.max(2, Math.round(reserve / (cap || 1) * 100));
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+      '<div style="width:64px;flex:none;text-align:right;font-size:12px;color:var(--tx2)">Reserve</div>' +
+      '<div style="flex:1;background:var(--bg2);border-radius:var(--rmd);height:24px;overflow:hidden"><div style="height:100%;width:' + rp + '%;background:var(--tx3);border-radius:var(--rmd)"></div></div>' +
+      '<div style="width:84px;flex:none;font-size:13px;font-weight:600">' + fmtInt(reserve) + ' <span style="color:var(--tx3);font-weight:400">' + pct(reserve / (cap || 1)) + '</span></div></div>';
+  }
+
+  document.getElementById(containerId).innerHTML = html ||
+    '<p style="font-size:13px;color:var(--tx3)">No publishers funded — lower the threshold, add publishers, or drag a bar to the right.</p>';
+}
+
+// ── Main recompute — called after every state mutation ────────────────────────
+// Updates ALL outputs: table cells, cards, KPIs, and bars.
+// No partial updates — the complete pipeline runs every time.
+
+function recompute() {
+  var res = compute(), recT = res.recT, planT = res.planT, cap = res.cap;
+
+  // Campaign-level outputs
+  set("o-troas", state.tm < 1 ? pct(state.K / (1 - state.tm)) : "—");
+  set("o-cap",  fmtInt(cap));
+  set("o-cap2", fmtInt(cap));
+
+  // Per-publisher table cells
+  res.rows.forEach(function(x, i) {
+    var t  = tierOf(x.eff);
+    var dn = x.below
+      ? ' <span title="Below break-even — revenue clawed back" style="color:var(--tx-neu);font-size:11px">▼</span>'
+      : "";
+
+    setCell("be",   i, x.valid ? pct(x.be)       : "—");
+    setCell("init", i, x.valid ? fmtX(x.initRAI) : "—");
+    setCell("eff",  i, isFinite(x.eff) ? fmtX(x.eff) : "—", t ? tierTx(t) : null);
+    setCell("tier", i, t
+      ? '<span class="badge" style="background:'+tierBg(t)+';color:'+tierTx(t)+'">'+t+'</span>' + dn
+      : "");
+
+    // Rec units — annotate zero-allocation with reason
+    var ru = res.recUnits[i] || 0;
+    if (ru === 0 && x.valid) {
+      var reason = isFinite(x.eff)
+        ? (x.eff < state.thr ? "below Min RAI" : "concentration capped")
+        : "invalid data";
+      setCell("recu", i,
+        '0 <span style="color:var(--tx-neu);font-size:11px;font-style:italic">('+reason+')</span>');
+    } else {
+      setCell("recu", i, fmtInt(ru));
+    }
+
+    var pu    = res.planUnits[i] || 0;
+    var pprof = pu * (x.realRevU - x.payout);
+    setCell("planprof", i, pu ? fmtMoney(pprof) : "$0", pprof < 0 ? "var(--tx-bad)" : "");
+  });
+
+  // Sync Your-units table inputs with current state.
+  // Covers the case where a drag (or any programmatic state change) updated
+  // p.yu without the user typing in the table input.
+  // Note: programmatic .value = x does NOT fire the "input" event — no loops.
+  state.pubs.forEach(function(p, i) {
+    var el = tb.querySelector('[data-i="'+i+'"][data-f="yu"]');
+    if (!el) return;
+    var v = isFinite(p.yu) ? String(Math.round(p.yu)) : "";
+    if (el.value !== v) el.value = v;
+  });
+
+  // Recommendation card
+  set("rec-roas", recT.units && recT.payout > 0 ? pct(recT.effroas) : "—");
+  set("rec-rai",  recT.units ? fmtX(recT.effrai) : "—");
+  set("rec-m",    recT.units ? pct(recT.netm)    : "—");
+  set("rec-prof",  fmtMoney(recT.profit));
+  set("rec-units", fmtInt(recT.units));
+  set("rec-res",   fmtInt(recT.reserve));
+
+  // Plan card
+  set("plan-roas", planT.units && planT.payout > 0 ? pct(planT.effroas) : "—");
+  set("plan-rai",  planT.units ? fmtX(planT.effrai) : "—");
+  set("plan-m",    planT.units ? pct(planT.netm)    : "—");
+  set("plan-prof",  fmtMoney(planT.profit));
+  set("plan-units", fmtInt(planT.units));
+  set("plan-res",   fmtInt(planT.reserve));
+  set("plan-over",  planT.over > 0 ? ("⚠ over capacity by " + fmtInt(planT.over)) : "");
+
+  // Deltas vs recommendation
+  function delta(id, val, unit, better) {
+    var el = document.getElementById(id); if (!el) return;
+    var pos = val >= 0;
+    var s = (pos ? "+" : "−") + (
+      unit === "x"   ? (Math.round(Math.abs(val) * 100) / 100).toFixed(2) + "x" :
+      unit === "pts" ? Math.round(Math.abs(val)) + " pts" : ""
+    );
+    el.textContent = "(" + s + " vs rec)";
+    el.style.color = (val === 0) ? "var(--tx3)" : ((better === pos) ? "var(--tx-good)" : "var(--tx-neu)");
+  }
+  delta("plan-roas-d", (planT.effroas - recT.effroas) * 100, "pts", true);
+  delta("plan-rai-d",  (planT.effrai  - recT.effrai),        "x",   true);
+  delta("plan-m-d",    (planT.netm    - recT.netm) * 100,    "pts", true);
+
+  var dp  = planT.profit - recT.profit;
+  var pde = document.getElementById("plan-prof-d");
+  if (pde) {
+    pde.textContent = "(" + (dp >= 0 ? "+" : "−") +
+      fmtMoney(Math.abs(dp)).replace("−", "") + " vs rec)";
+    pde.style.color = dp >= 0 ? "var(--tx-good)" : "var(--tx-neu)";
+  }
+
+  // Takeaway sentence
+  var dU   = planT.units - recT.units;
+  var same = dU === 0 && Math.abs(dp) < 0.5;
+  var tk   = document.getElementById("o-takeaway");
+  if (tk) {
+    if (same) {
+      tk.textContent = "Your plan matches the model's recommendation. " +
+        "Drag the bars below or enter conversions in \"Your units\" to compare a different mix.";
+    } else {
+      var dRai = planT.effrai - recT.effrai;
+      var dM   = Math.round((planT.netm - recT.netm) * 100);
+      var vol  = dU >= 0
+        ? ("runs " + fmtInt(dU)  + " more units")
+        : ("runs " + fmtInt(-dU) + " fewer units");
+      var prof = (dp >= 0 ? "adds " : "gives up ") + fmtMoney(Math.abs(dp)).replace("−", "") + " of profit";
+      var rate = "effective RAI " + (dRai >= 0 ? "+" : "") +
+        (Math.round(dRai * 100) / 100).toFixed(2) + "x, net margin " +
+        (dM >= 0 ? "+" : "") + dM + " pts";
+      tk.textContent = "Versus the model's pick, your plan " + vol + " and " + prof +
+        " — at " + rate + "." +
+        (planT.over > 0 ? " Note: this exceeds your budget capacity." : "");
+    }
+  }
+
+  // Supporting plan KPIs
+  set("o-util", cap > 0 ? pct(planT.units / cap) : "0%");
+  set("o-res",  fmtInt(planT.reserve));
+  set("o-pay",  fmtMoney(planT.payout));
+  set("o-rev",  fmtMoney(planT.rev));
+  set("o-claw", fmtMoney(planT.claw));
+
+  // Bars — recommendation is static, plan is interactive (drag)
+  renderBars("bars-rec", res.rows, res.recUnits,  recT.reserve,  cap, false);
+  renderBars("bars",     res.rows, res.planUnits, planT.reserve, cap, true);
+
+  // Show the drag hint once there is something to drag
+  var hint = document.getElementById("drag-hint");
+  if (hint && state.pubs.length > 0) hint.style.display = "block";
+}
+
+// ── Campaign input event listeners ────────────────────────────────────────────
+// Every control mutation triggers exactly one full recompute().
+
+document.getElementById("i-budget").addEventListener("input", function(e){
+  state.budget = parseFloat(e.target.value) || 0; recompute();
+});
+document.getElementById("i-rate").addEventListener("input", function(e){
+  state.R = parseFloat(e.target.value) || 0; recompute();
+});
+document.getElementById("s-cli").addEventListener("input", function(e){
+  state.K = (+e.target.value) / 100;
+  document.getElementById("o-cli").textContent = e.target.value + '%';
+  recompute();
+});
+document.getElementById("s-tm").addEventListener("input", function(e){
+  state.tm = (+e.target.value) / 100;
+  document.getElementById("o-tm").textContent = e.target.value + '%';
+  recompute();
+});
+document.getElementById("s-thr").addEventListener("input", function(e){
+  state.thr = +e.target.value;
+  document.getElementById("o-thr").textContent = fmtX(state.thr);
+  recompute();
+});
+document.getElementById("s-conc").addEventListener("input", function(e){
+  state.conc = (+e.target.value) / 100;
+  document.getElementById("o-conc").textContent = e.target.value + '%';
+  recompute();
+});
+document.getElementById("c-redist").addEventListener("change", function(e){
+  state.redistribute = e.target.checked; recompute();
+});
+
+// ── Add publisher ─────────────────────────────────────────────────────────────
+// Defaults: margin 20%, ROAS 125% (initRAI = 1.0 at default tm=20%, K=100%)
+// meaning this publisher is exactly at the model threshold.
+// The user can adjust m/r to model different quality publishers.
+
+document.getElementById("b-add").addEventListener("click", function(){
+  state.pubs.push({ n: "New Publisher", m: 20, r: 125, maxcap: NaN, io: NaN, fr: NaN, yu: NaN });
+  buildRows();
+  recompute();
+});
+
+// ── Reset to recommendation — COMPLETE reset ──────────────────────────────────
+// Clears ALL per-publisher overrides: Your units (yu), Init RAI override (io),
+// and Final RAI override (fr). Restores pure model recommendation.
+
+document.getElementById("b-rec").addEventListener("click", function(){
+  state.pubs.forEach(function(p){ p.yu = NaN; p.io = NaN; p.fr = NaN; });
+  buildRows();
+  recompute();
+});
+
+// ── Loading state helpers ─────────────────────────────────────────────────────
+
+function showLoading(msg) {
+  var el = document.getElementById("sim-loading");
+  if (!el) return;
+  el.textContent = msg || "Loading…";
+  el.style.display = "block";
+}
+function hideLoading() {
+  var el = document.getElementById("sim-loading");
+  if (el) el.style.display = "none";
+}
+
+// ── Bootstrap: load real publisher data for the selected offer ────────────────
+// Fetches /api/simulator-data?offer=<offer> which returns per-publisher
+// margin_pct and roas_pct derived from the enriched summary — the same
+// underlying data source as the Offer Profile page.
+// No hardcoded publishers. No demo data. No fabricated values.
+
+function loadPublishers() {
+  if (!_offer) {
+    // No offer in URL — start with empty table; user can add publishers manually
+    buildRows();
+    recompute();
+    return;
+  }
+
+  showLoading("Loading publisher data for " + _offer + " …");
+
+  fetch('/api/simulator-data?offer=' + encodeURIComponent(_offer))
+    .then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      var pubs = data.publishers || [];
+      if (!pubs.length) {
+        showLoading(
+          "No publisher data found for " + _offer + " in the last 30 days. " +
+          "Use the \"+ Add publisher\" button to add publishers manually."
+        );
+        buildRows();
+        recompute();
+        return;
+      }
+      state.pubs = pubs.map(function(p) {
+        return { n: p.n, m: +p.m, r: +p.r, maxcap: NaN, io: NaN, fr: NaN, yu: NaN };
+      });
+      hideLoading();
+      buildRows();
+      recompute();
+    })
+    .catch(function(err) {
+      console.warn("Simulator: failed to load publisher data", err);
+      showLoading(
+        "Could not load publisher data. " +
+        "Use the \"+ Add publisher\" button to add publishers manually."
+      );
+      buildRows();
+      recompute();
+    });
+}
+
+loadPublishers();
+
 })();
 </script>
 </body>
