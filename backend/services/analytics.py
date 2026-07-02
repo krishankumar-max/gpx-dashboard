@@ -51,11 +51,13 @@ class AnalyticsService:
         game_config_svc,
         publisher_svc,
         funnel_svc: "FunnelService",
+        override_svc=None,
     ) -> None:
         self._cache           = cache
         self._game_config_svc = game_config_svc
         self._publisher_svc   = publisher_svc
         self._funnel_svc      = funnel_svc
+        self._override_svc    = override_svc   # OverrideService | None
 
     # ══════════════════════════════════════════════════════════════════════════
     # Cache-backed data accessors
@@ -224,7 +226,68 @@ class AnalyticsService:
         _elig_ids = self.get_revenue_eligible_offer_ids()
         df = df[df["offer_id"].isin(_elig_ids)]
 
+        # ── Manual override layer ─────────────────────────────────────────────
+        # Applied AFTER revenue calculation and eligibility filter so overrides
+        # only affect the analytics layer — raw data is never touched.
+        if self._override_svc is not None and not df.empty:
+            df = self._apply_manual_overrides(df)
+
         self._cache.set("edf", df, ttl=_CACHE_TTL_CFG)
+        return df
+
+    def _apply_manual_overrides(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply manual revenue / cost overrides to the enriched DataFrame.
+
+        Override is keyed by (date_str, publisher_id, offer_id).
+        For each matching group:
+          - If revenue_override is set: scale all revenue values in the group
+            proportionally so the group total equals revenue_override.
+          - If cost_override is set: same for payout.
+
+        If the current group total is 0 (no calculated revenue), the override
+        value is distributed evenly across all rows in the group.
+
+        The DataFrame is modified in-place (copy already made upstream).
+        """
+        override_map = self._override_svc.get_override_map()
+        if not override_map:
+            return df
+
+        df = df.copy()
+
+        for (date_str, pub_id, offer_id), ov in override_map.items():
+            mask = (
+                (df["date"].astype(str) == date_str)
+                & (df["partner"].astype(str) == pub_id)
+                & (df["offer_id"].astype(str) == offer_id)
+            )
+            if not mask.any():
+                continue
+
+            rev_ov  = ov.get("revenue")
+            cost_ov = ov.get("cost")
+
+            if rev_ov is not None:
+                curr_total = float(df.loc[mask, "revenue"].sum())
+                if curr_total != 0:
+                    scale = rev_ov / curr_total
+                    df.loc[mask, "revenue"] = (df.loc[mask, "revenue"] * scale).round(4)
+                else:
+                    n = int(mask.sum())
+                    df.loc[mask, "revenue"] = round(rev_ov / n, 4) if n else 0.0
+                # Flag rows that were overridden so API callers can surface it
+                df.loc[mask, "revenue_source"] = "override"
+
+            if cost_ov is not None:
+                curr_total = float(df.loc[mask, "payout"].sum())
+                if curr_total != 0:
+                    scale = cost_ov / curr_total
+                    df.loc[mask, "payout"] = (df.loc[mask, "payout"] * scale).round(4)
+                else:
+                    n = int(mask.sum())
+                    df.loc[mask, "payout"] = round(cost_ov / n, 4) if n else 0.0
+
         return df
 
     # ══════════════════════════════════════════════════════════════════════════

@@ -40,3 +40,7 @@ def sync_engine():
 
 def structure_svc():
     return current_app.structure_svc  # type: ignore[attr-defined]
+
+
+def override_svc():
+    return getattr(current_app, "override_svc", None)  # type: ignore[attr-defined]

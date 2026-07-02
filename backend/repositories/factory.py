@@ -23,6 +23,7 @@ from loguru import logger
 
 from backend.repositories.base import (
     GameConfigRepository,
+    OverrideRepository,
     PartnerRepository,
     PublisherRepository,
     StructureRepository,
@@ -127,6 +128,29 @@ class RepositoryFactory:
             from backend.repositories.pg.structure import PgStructureRepository
             logger.info("RepositoryFactory → PgStructureRepository (PostgreSQL)")
             return PgStructureRepository()
+
+        raise ValueError(
+            f"Unknown REPO_BACKEND={backend!r}. Valid values: 'json', 'pg'."
+        )
+
+    @staticmethod
+    def create_override_repo(
+        backend: str = "json",
+        config_dir: Path | None = None,
+    ) -> OverrideRepository:
+        backend = backend.lower().strip()
+
+        if backend == "json":
+            from backend.config import DATA_DIR
+            from backend.repositories.json.override import JsonOverrideRepository
+            path = (config_dir or DATA_DIR / "config") / "manual_overrides.json"
+            logger.debug(f"RepositoryFactory → JsonOverrideRepository ({path})")
+            return JsonOverrideRepository(file_path=path)
+
+        if backend == "pg":
+            from backend.repositories.pg.override import PgOverrideRepository
+            logger.info("RepositoryFactory → PgOverrideRepository (PostgreSQL)")
+            return PgOverrideRepository()
 
         raise ValueError(
             f"Unknown REPO_BACKEND={backend!r}. Valid values: 'json', 'pg'."

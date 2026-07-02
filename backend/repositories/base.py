@@ -155,6 +155,40 @@ class StructureRepository(ABC):
         """Update status / timestamps on an existing record.  Returns updated dict or None."""
 
 
+class OverrideRepository(ABC):
+    """
+    Persistence interface for manual revenue / cost overrides.
+
+    Key constraint: at most one override per (date, publisher_id, offer_id).
+    upsert() must create or update — never duplicate.
+    """
+
+    @abstractmethod
+    def get_all(self) -> list[dict]:
+        """Return all overrides as plain dicts, ordered by date desc."""
+
+    @abstractmethod
+    def get_by_id(self, override_id: str) -> dict | None:
+        """Return a single override by UUID, or None."""
+
+    @abstractmethod
+    def get_by_key(self, date: str, publisher_id: str, offer_id: str) -> dict | None:
+        """Return the override for a specific (date, publisher_id, offer_id), or None."""
+
+    @abstractmethod
+    def upsert(self, data: dict) -> dict:
+        """
+        Create or update the override for (date, publisher_id, offer_id).
+
+        If a record with the same (date, publisher_id, offer_id) already exists,
+        update it and return the updated record.  Otherwise create a new record.
+        """
+
+    @abstractmethod
+    def delete(self, override_id: str) -> bool:
+        """Delete by id.  Returns True if found and deleted."""
+
+
 class PartnerRepository(ABC):
     """Persistence interface for partner (portal user) records."""
 

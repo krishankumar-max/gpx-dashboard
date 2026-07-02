@@ -37,6 +37,7 @@ class RewardStep(AppBaseModel):
         time_minutes      — expected time in minutes to reach the milestone
         payout            — USD payout when this milestone is achieved
     """
+    description:      str   = ""
     goal:             str   = ""
     expected_percent: float = 100.0
     time_minutes:     float = 0.0

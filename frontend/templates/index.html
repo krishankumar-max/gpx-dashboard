@@ -183,6 +183,10 @@
           <span class="sb-icon"><i class="fas fa-shield-halved"></i></span>
           <span class="sb-label">Administration</span>
         </a>
+        <a class="sb-item" data-page="overrides" onclick="navigateTo('overrides')">
+          <span class="sb-icon"><i class="fas fa-sliders"></i></span>
+          <span class="sb-label">Manual Overrides</span>
+        </a>
       </div>
     </div>
 
@@ -2166,14 +2170,8 @@
                 <div class="st-pub-id" id="st-pub-hdr-id"></div>
               </div>
               <div class="st-pub-actions">
-                <button class="btn-primary" onclick="_stOpenWorkspace('new')">
-                  <i class="fas fa-plus"></i> Add Structure
-                </button>
-                <button class="btn-ghost" onclick="_stOpenCloneSameModal()">
-                  <i class="fas fa-copy"></i> Clone within
-                </button>
-                <button class="btn-outline-sm" onclick="_stOpenCloneOtherModal()">
-                  <i class="fas fa-clone"></i> Clone from another
+                <button class="btn btn-primary" onclick="_stOpenWorkspace('new')">
+                  <i class="fas fa-plus"></i> New Structure
                 </button>
               </div>
             </div>
@@ -2273,7 +2271,7 @@
           <input id="st-ws-view-pub" type="text" readonly>
         </div>
         <div class="mgmt-field">
-          <label>Offer / Game</label>
+          <label>Game / Offer</label>
           <input id="st-ws-view-offer" type="text" readonly>
         </div>
         <div class="mgmt-field">
@@ -2314,10 +2312,13 @@
             <i class="fas fa-plus"></i> Add Row
           </button>
           <button class="btn-outline-sm" onclick="document.getElementById('st-ws-csv-file').click()">
-            <i class="fas fa-upload"></i> Upload CSV
+            <i class="fas fa-file-csv"></i> Import CSV
           </button>
           <input id="st-ws-csv-file" type="file" accept=".csv,text/csv" style="display:none"
                  onchange="_stWsCsvFileInput(event)">
+          <button class="btn-outline-sm" onclick="_stDownloadSampleCsv()">
+            <i class="fas fa-download"></i> Download Sample CSV
+          </button>
         </span>
         <button id="st-ws-reward-dl-btn" class="btn-outline-sm" style="display:none"
                 onclick="_stDownloadSampleCsv()">
@@ -2326,18 +2327,26 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="data-table" id="st-ws-steps-table">
+      <table class="data-table st-ver-table" id="st-ws-steps-table">
         <thead>
           <tr>
-            <th>Goal</th>
-            <th class="th-num">Expected %</th>
-            <th class="th-num">Time (min)</th>
-            <th class="th-num">Payout ($)</th>
+            <th style="width:160px">Description</th>
+            <th>Goal Event</th>
+            <th class="th-num" style="width:100px">Expected %</th>
+            <th class="th-num" style="width:100px">Time (min)</th>
+            <th class="th-num" style="width:110px">Payout ($)</th>
             <th style="width:44px"></th>
           </tr>
         </thead>
         <tbody id="st-ws-steps-body"></tbody>
       </table>
+    </div>
+    <div style="padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-app)">
+      <span style="font-size:11px;color:var(--txt-muted)">
+        <i class="fas fa-circle-info" style="margin-right:4px"></i>
+        CSV format: <code style="font-size:11px">Description,Goal Event,Expected %,Time (min),Payout ($)</code>
+        — Description auto-generates from Goal Event if omitted; Expected % defaults to 100, Time defaults to 0.
+      </span>
     </div>
   </div>
 
@@ -2373,6 +2382,128 @@
   </div>
 
 </section>
+
+
+<!-- ══ PAGE: Manual Overrides ════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MANUAL OVERRIDES PAGE v2
+═══════════════════════════════════════════════════════════════════════════════ -->
+<section id="page-overrides" class="page">
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h2 class="page-title">Manual Overrides</h2>
+      <p class="page-subtitle">Override Revenue or Cost for any Publisher + Offer + Date. Changes apply instantly across all analytics.</p>
+    </div>
+    <div class="page-header-actions">
+      <button class="ov2-btn ov2-btn-ghost" id="ov2-refresh-btn" onclick="_ovRefresh()" title="Refresh data">
+        <i class="fas fa-rotate-right"></i> Refresh
+      </button>
+      <button class="ov2-btn ov2-btn-ghost" onclick="_ovShowImport()">
+        <i class="fas fa-upload"></i> Import CSV
+      </button>
+      <button class="ov2-btn ov2-btn-ghost" onclick="_ovExportCSV()">
+        <i class="fas fa-download"></i> Export CSV
+      </button>
+      <button class="ov2-btn ov2-btn-primary" onclick="_ovOpenDrawer(null)">
+        <i class="fas fa-plus"></i> Add Override
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="ov2-cards-row">
+    <div class="ov2-card">
+      <div class="ov2-card-icon ov2-card-icon-blue"><i class="fas fa-sliders"></i></div>
+      <div class="ov2-card-body">
+        <div class="ov2-card-label">Total Overrides</div>
+        <div class="ov2-card-value" id="ov2-kpi-total">—</div>
+      </div>
+    </div>
+    <div class="ov2-card">
+      <div class="ov2-card-icon ov2-card-icon-green"><i class="fas fa-dollar-sign"></i></div>
+      <div class="ov2-card-body">
+        <div class="ov2-card-label">Revenue Adjusted</div>
+        <div class="ov2-card-value" id="ov2-kpi-revenue">—</div>
+      </div>
+    </div>
+    <div class="ov2-card">
+      <div class="ov2-card-icon ov2-card-icon-orange"><i class="fas fa-coins"></i></div>
+      <div class="ov2-card-body">
+        <div class="ov2-card-label">Cost Adjusted</div>
+        <div class="ov2-card-value" id="ov2-kpi-cost">—</div>
+      </div>
+    </div>
+    <div class="ov2-card">
+      <div class="ov2-card-icon ov2-card-icon-purple"><i class="fas fa-clock-rotate-left"></i></div>
+      <div class="ov2-card-body">
+        <div class="ov2-card-label">Last Updated</div>
+        <div class="ov2-card-value ov2-card-value-sm" id="ov2-kpi-updated">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="ov2-toolbar">
+    <div class="ov2-toolbar-left">
+      <div class="ov2-search-wrap">
+        <i class="fas fa-search ov2-search-icon"></i>
+        <input type="text" id="ov2-f-search" class="ov2-search-input" placeholder="Search publisher, offer, reason…" oninput="_ovApplyFilters()">
+      </div>
+      <input type="date" id="ov2-f-from" class="ov2-filter-input" title="From date" onchange="_ovApplyFilters()">
+      <input type="date" id="ov2-f-to" class="ov2-filter-input" title="To date" onchange="_ovApplyFilters()">
+      <select id="ov2-f-pub" class="ov2-filter-select" onchange="_ovApplyFilters()">
+        <option value="">All Publishers</option>
+      </select>
+      <select id="ov2-f-offer" class="ov2-filter-select" onchange="_ovApplyFilters()">
+        <option value="">All Offers</option>
+      </select>
+      <button class="ov2-btn ov2-btn-ghost ov2-btn-sm" onclick="_ovClearFilters()">
+        <i class="fas fa-xmark"></i> Clear
+      </button>
+    </div>
+    <div class="ov2-toolbar-right">
+      <span class="ov2-filter-count" id="ov2-filter-count"></span>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="ov2-table-card">
+    <div class="ov2-table-wrap">
+      <table class="ov2-table" id="ov2-table">
+        <thead>
+          <tr>
+            <th class="ov2-th ov2-th-sortable" onclick="_ovSortBy('date')" style="width:100px">
+              Date <i class="fas fa-sort ov2-sort-icon" id="ov2-sort-date"></i>
+            </th>
+            <th class="ov2-th">Publisher</th>
+            <th class="ov2-th">Offer</th>
+            <th class="ov2-th ov2-th-num ov2-th-sortable" onclick="_ovSortBy('revenue_override')" style="width:140px">
+              Revenue Override <i class="fas fa-sort ov2-sort-icon" id="ov2-sort-revenue_override"></i>
+            </th>
+            <th class="ov2-th ov2-th-num ov2-th-sortable" onclick="_ovSortBy('cost_override')" style="width:120px">
+              Cost Override <i class="fas fa-sort ov2-sort-icon" id="ov2-sort-cost_override"></i>
+            </th>
+            <th class="ov2-th ov2-th-muted" style="width:150px">Reason</th>
+            <th class="ov2-th ov2-th-muted" style="width:100px">Created By</th>
+            <th class="ov2-th ov2-th-num ov2-th-muted ov2-th-sortable" onclick="_ovSortBy('updated_at')" style="width:130px">
+              Updated <i class="fas fa-sort ov2-sort-icon" id="ov2-sort-updated_at"></i>
+            </th>
+            <th class="ov2-th" style="width:96px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="ov2-tbody">
+          <tr><td colspan="9" class="ov2-loading-cell">
+            <div class="ov2-empty-state"><i class="fas fa-spinner fa-spin" style="font-size:20px;color:var(--txt-muted)"></i></div>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="ov2-pagination" class="ov2-pagination" style="display:none"></div>
+  </div>
+
+</section><!-- /page-overrides -->
 
     </main>
 </div><!-- .shell -->
@@ -2421,37 +2552,57 @@
 
 
 
-<!-- ══ MODAL: Clone from same publisher
-
-<!-- ══ MODAL: Clone from same publisher ═══════════════════════════════════════ -->
+<!-- ══ MODAL: Clone version within same publisher + game ═══════════════════════ -->
+<!-- ══ MODAL: Clone current version (same publisher) ══════════════════════════ -->
 <div id="modal-st-clone-same" class="modal-overlay" style="display:none"
      onclick="if(event.target===this)_stCloseCloneSameModal()">
   <div class="modal-box">
     <div class="modal-header">
-      <span class="modal-title">Clone Structure — Same Publisher</span>
+      <span class="modal-title" id="st-cs-title">Clone Version</span>
       <button class="modal-close" onclick="_stCloseCloneSameModal()">×</button>
     </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Source version</label>
-        <select id="st-clone-same-src" class="form-control"></select>
+
+    <!-- Step 1: pick version -->
+    <div id="st-cs-step1">
+      <div class="modal-body">
+        <div class="st-clone-dest-row">
+          <i class="fas fa-arrow-right-to-bracket"></i>
+          <span>Cloning into <strong id="st-clone-same-dest-name"></strong></span>
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label" style="margin-bottom:8px">Select version to clone</label>
+          <div id="st-cs-radio-list" class="st-ver-radio-list"></div>
+        </div>
+        <p id="st-clone-same-error" class="form-error" style="display:none"></p>
       </div>
-      <div class="form-group">
-        <label class="form-label">Target game (Offer ID)</label>
-        <input id="st-clone-same-target-offer" type="text" class="form-control"
-               placeholder="offer_id of the target game">
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="_stCloseCloneSameModal()">Cancel</button>
+        <button id="st-cs-continue-btn" class="btn btn-primary"
+                onclick="_stCloneSameStep2()" disabled>Continue →</button>
       </div>
-      <div class="form-group">
-        <label class="form-label">Target game name</label>
-        <input id="st-clone-same-target-name" type="text" class="form-control"
-               placeholder="Display name (optional)">
-      </div>
-      <p id="st-clone-same-error" class="form-error" style="display:none"></p>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="_stCloseCloneSameModal()">Cancel</button>
-      <button id="st-clone-same-btn" class="btn btn-primary"
-              onclick="_stSaveCloneSame()">Clone</button>
+
+    <!-- Step 2: confirm -->
+    <div id="st-cs-step2" style="display:none">
+      <div class="modal-body">
+        <div id="st-cs-confirm-body" class="st-clone-confirm"></div>
+        <p id="st-clone-same-error2" class="form-error" style="display:none"></p>
+      </div>
+      <div class="modal-footer" style="gap:8px">
+        <button class="modal-back-btn" onclick="_stCloneSameBack()">
+          <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <span style="flex:1"></span>
+        <button class="btn btn-outline" onclick="_stCloseCloneSameModal()">Cancel</button>
+        <button id="st-cs-save-pending-btn" class="btn btn-outline"
+                onclick="_stSaveCloneSame(false)">
+          <i class="fas fa-clock"></i> Save as Pending
+        </button>
+        <button id="st-cs-save-live-btn" class="btn btn-primary"
+                onclick="_stSaveCloneSame(true)">
+          <i class="fas fa-circle-play"></i> Save &amp; Make Live
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -2460,47 +2611,104 @@
 <!-- ══ MODAL: Clone from another publisher ════════════════════════════════════ -->
 <div id="modal-st-clone-other" class="modal-overlay" style="display:none"
      onclick="if(event.target===this)_stCloseCloneOtherModal()">
-  <div class="modal-box">
+  <div class="modal-box modal-box-lg">
     <div class="modal-header">
-      <span class="modal-title">Clone Structure — Any Publisher</span>
+      <span class="modal-title">Clone from Another Publisher</span>
       <button class="modal-close" onclick="_stCloseCloneOtherModal()">×</button>
     </div>
+
+    <!-- Step 1: cascade selectors -->
+    <div id="st-co-step1">
+      <div class="modal-body">
+        <div class="st-clone-dest-row" style="margin-bottom:16px">
+          <i class="fas fa-arrow-right-to-bracket"></i>
+          <span>Cloning into <strong id="st-clone-other-dest-name"></strong></span>
+        </div>
+
+        <div class="form-group">
+          <div class="st-step-label">
+            <span class="st-step-num">1</span>
+            <span class="st-step-lbl">Source Publisher</span>
+          </div>
+          <select id="st-clone-other-src-pub" class="form-control"
+                  onchange="_stCloneOtherPubChanged()">
+            <option value="">— select publisher —</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <div class="st-step-label">
+            <span class="st-step-num">2</span>
+            <span class="st-step-lbl">Source Game</span>
+          </div>
+          <select id="st-clone-other-src-game" class="form-control"
+                  onchange="_stCloneOtherGameChanged()" disabled>
+            <option value="">— select game —</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <div class="st-step-label">
+            <span class="st-step-num">3</span>
+            <span class="st-step-lbl">Source Version</span>
+          </div>
+          <select id="st-clone-other-src-ver" class="form-control"
+                  onchange="_stCloneOtherVerChanged()" disabled>
+            <option value="">— select version —</option>
+          </select>
+        </div>
+
+        <div id="st-clone-other-preview" style="display:none;margin-top:4px">
+          <div id="st-clone-other-preview-body"></div>
+        </div>
+        <p id="st-clone-other-error" class="form-error" style="display:none"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="_stCloseCloneOtherModal()">Cancel</button>
+        <button id="st-co-continue-btn" class="btn btn-primary"
+                onclick="_stCloneOtherStep2()" disabled>Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: confirm -->
+    <div id="st-co-step2" style="display:none">
+      <div class="modal-body">
+        <div id="st-co-confirm-body" class="st-clone-confirm"></div>
+        <p id="st-clone-other-error2" class="form-error" style="display:none"></p>
+      </div>
+      <div class="modal-footer" style="gap:8px">
+        <button class="modal-back-btn" onclick="_stCloneOtherBack()">
+          <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <span style="flex:1"></span>
+        <button class="btn btn-outline" onclick="_stCloseCloneOtherModal()">Cancel</button>
+        <button id="st-co-save-pending-btn" class="btn btn-outline"
+                onclick="_stSaveCloneOther(false)">
+          <i class="fas fa-clock"></i> Save as Pending
+        </button>
+        <button id="st-co-save-live-btn" class="btn btn-primary"
+                onclick="_stSaveCloneOther(true)">
+          <i class="fas fa-circle-play"></i> Save &amp; Make Live
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ MODAL: Version History ════════════════════════════════════════════════ -->
+<div id="modal-st-history" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)_stCloseHistoryModal()">
+  <div class="modal-box modal-box-lg">
+    <div class="modal-header">
+      <span class="modal-title">Version History — <span id="st-hist-title"></span></span>
+      <button class="modal-close" onclick="_stCloseHistoryModal()">×</button>
+    </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Source publisher</label>
-        <select id="st-clone-other-src-pub" class="form-control"
-                onchange="_stCloneOtherPubChanged()">
-          <option value="">— select publisher —</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Source game + version</label>
-        <select id="st-clone-other-src-ver" class="form-control"
-                onchange="_stCloneOtherVerChanged()">
-          <option value="">— select version —</option>
-        </select>
-      </div>
-      <div id="st-clone-other-preview" class="st-clone-preview" style="display:none">
-        <div class="st-clone-preview-label">Structure to be cloned</div>
-        <div id="st-clone-other-preview-body"></div>
-      </div>
-      <hr class="modal-hr">
-      <div class="form-group">
-        <label class="form-label">Target game (Offer ID)</label>
-        <input id="st-clone-other-target-offer" type="text" class="form-control"
-               placeholder="offer_id of the target game">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Target game name</label>
-        <input id="st-clone-other-target-name" type="text" class="form-control"
-               placeholder="Display name (optional)">
-      </div>
-      <p id="st-clone-other-error" class="form-error" style="display:none"></p>
+      <div id="st-hist-body" class="st-hist-timeline"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="_stCloseCloneOtherModal()">Cancel</button>
-      <button id="st-clone-other-btn" class="btn btn-primary"
-              onclick="_stSaveCloneOther()">Clone</button>
+      <button class="btn btn-outline" onclick="_stCloseHistoryModal()">Close</button>
     </div>
   </div>
 </div>
@@ -2575,5 +2783,229 @@
 
 <!-- Toast notification container -->
 <div id="toast-container"></div>
+
+<!-- Hidden file input for empty-state CSV import.
+     MUST be at document level (not inside a hidden .page section) so that
+     programmatic .click() is not blocked by a display:none ancestor. -->
+<input id="st-import-csv-input" type="file" accept=".csv,text/csv" style="display:none"
+       onchange="_stEmptyImportCsv(event)">
+
+<!-- ══ MODAL: Clone from existing publisher (empty-state flow) ══════════════ -->
+<!-- Opens from the empty-state "Clone From Existing Publisher" button.         -->
+<!-- Selecting a version populates the workspace editor; Save Structure creates. -->
+<div id="modal-st-clone-empty" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this)_stCloseCloneEmptyModal()">
+  <div class="modal-box modal-box-lg">
+    <div class="modal-header">
+      <span class="modal-title">Clone From Existing Publisher</span>
+      <button class="modal-close" onclick="_stCloseCloneEmptyModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="st-clone-dest-row" style="margin-bottom:16px">
+        <i class="fas fa-arrow-right-to-bracket"></i>
+        <span>Will create a new game in <strong id="st-clone-empty-dest-name"></strong>
+          — you can review &amp; edit before saving.</span>
+      </div>
+
+      <div class="form-group">
+        <div class="st-step-label">
+          <span class="st-step-num">1</span>
+          <span class="st-step-lbl">Source Publisher</span>
+        </div>
+        <select id="st-clone-empty-src-pub" class="form-control"
+                onchange="_stCloneEmptyPubChanged()">
+          <option value="">— select publisher —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="st-step-label">
+          <span class="st-step-num">2</span>
+          <span class="st-step-lbl">Source Game</span>
+        </div>
+        <select id="st-clone-empty-src-game" class="form-control"
+                onchange="_stCloneEmptyGameChanged()" disabled>
+          <option value="">— select game —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="st-step-label">
+          <span class="st-step-num">3</span>
+          <span class="st-step-lbl">Source Version</span>
+        </div>
+        <select id="st-clone-empty-src-ver" class="form-control"
+                onchange="_stCloneEmptyVerChanged()" disabled>
+          <option value="">— select version —</option>
+        </select>
+      </div>
+
+      <div id="st-clone-empty-preview" style="display:none;margin-top:4px">
+        <div id="st-clone-empty-preview-body"></div>
+      </div>
+      <p id="st-clone-empty-error" class="form-error" style="display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="_stCloseCloneEmptyModal()">Cancel</button>
+      <button id="st-clone-empty-populate-btn" class="btn btn-primary"
+              onclick="_stCloneEmptyPopulate()" disabled>
+        <i class="fas fa-arrow-right-to-bracket"></i> Populate Editor
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DRAWER: Add / Edit Override ══════════════════════════════════════════ -->
+<div class="ov2-drawer-overlay" id="ov2-drawer-overlay" onclick="_ovCloseDrawer(event)">
+  <div class="ov2-drawer" id="ov2-drawer">
+    <div class="ov2-drawer-header">
+      <div class="ov2-drawer-header-left">
+        <div class="ov2-drawer-icon"><i class="fas fa-sliders"></i></div>
+        <div>
+          <div class="ov2-drawer-title" id="ov2-drawer-title">Add Override</div>
+          <div class="ov2-drawer-subtitle" id="ov2-drawer-subtitle">Create a new manual override</div>
+        </div>
+      </div>
+      <button class="ov2-drawer-close" onclick="_ovCloseDrawer()">&times;</button>
+    </div>
+    <div class="ov2-drawer-body">
+
+      <div class="ov2-form-error" id="ov2-form-error" style="display:none">
+        <i class="fas fa-circle-exclamation"></i>
+        <span id="ov2-form-error-text"></span>
+      </div>
+
+      <!-- General -->
+      <div class="ov2-section">
+        <div class="ov2-section-label">General</div>
+        <div class="ov2-form-row">
+          <div class="ov2-form-group">
+            <label class="ov2-label">Date <span class="ov2-req">*</span></label>
+            <input type="date" id="ov2-m-date" class="ov2-input" oninput="_ovUpdatePreview()">
+          </div>
+        </div>
+        <div class="ov2-form-row ov2-form-row-2" style="margin-top:12px">
+          <div class="ov2-form-group">
+            <label class="ov2-label">Publisher <span class="ov2-req">*</span></label>
+            <select id="ov2-m-pub" class="ov2-select" onchange="_ovOnPubChange()">
+              <option value="">Select publisher…</option>
+            </select>
+          </div>
+          <div class="ov2-form-group">
+            <label class="ov2-label">Offer <span class="ov2-req">*</span></label>
+            <select id="ov2-m-offer" class="ov2-select" onchange="_ovOnOfferChange()">
+              <option value="">Select offer…</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Override Values -->
+      <div class="ov2-section">
+        <div class="ov2-section-label">Override Values</div>
+        <p class="ov2-section-hint">Leave blank to use the calculated value. At least one must be set.</p>
+        <div class="ov2-form-row-2">
+          <div class="ov2-form-group">
+            <label class="ov2-label">Revenue Override ($)</label>
+            <div class="ov2-input-wrap">
+              <span class="ov2-input-prefix">$</span>
+              <input type="number" id="ov2-m-revenue" class="ov2-input ov2-input-prefixed" min="0" step="0.01" placeholder="0.00" oninput="_ovUpdatePreview()">
+            </div>
+          </div>
+          <div class="ov2-form-group">
+            <label class="ov2-label">Cost Override ($)</label>
+            <div class="ov2-input-wrap">
+              <span class="ov2-input-prefix">$</span>
+              <input type="number" id="ov2-m-cost" class="ov2-input ov2-input-prefixed" min="0" step="0.01" placeholder="0.00" oninput="_ovUpdatePreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Preview -->
+      <div class="ov2-section ov2-preview-section" id="ov2-preview-section" style="display:none">
+        <div class="ov2-section-label"><i class="fas fa-eye" style="margin-right:5px"></i>Live Preview</div>
+        <div class="ov2-preview-grid" id="ov2-preview-grid"></div>
+      </div>
+
+      <!-- Audit Trail -->
+      <div class="ov2-section">
+        <div class="ov2-section-label">Audit Trail</div>
+        <div class="ov2-form-group">
+          <label class="ov2-label">Reason <span class="ov2-optional">(optional)</span></label>
+          <input type="text" id="ov2-m-reason" class="ov2-input" placeholder="e.g. Advertiser report discrepancy">
+        </div>
+        <div class="ov2-form-group" style="margin-top:12px">
+          <label class="ov2-label">Notes <span class="ov2-optional">(optional)</span></label>
+          <textarea id="ov2-m-notes" class="ov2-input ov2-textarea" rows="3" placeholder="Additional context or reference numbers…"></textarea>
+        </div>
+      </div>
+
+    </div>
+    <div class="ov2-drawer-footer">
+      <button class="ov2-btn ov2-btn-ghost" onclick="_ovCloseDrawer()">Cancel</button>
+      <button class="ov2-btn ov2-btn-primary" id="ov2-save-btn" onclick="_ovSave()">
+        <i class="fas fa-floppy-disk"></i> Save Override
+      </button>
+    </div>
+    <input type="hidden" id="ov2-m-id">
+    <input type="hidden" id="ov2-m-pub-name">
+    <input type="hidden" id="ov2-m-offer-name">
+  </div>
+</div>
+
+<!-- ═══ DELETE CONFIRM ════════════════════════════════════════════════════════ -->
+<div class="ov2-confirm-overlay" id="ov2-confirm-overlay">
+  <div class="ov2-confirm-box">
+    <div class="ov2-confirm-icon"><i class="fas fa-triangle-exclamation"></i></div>
+    <div class="ov2-confirm-title">Delete Override?</div>
+    <div class="ov2-confirm-body" id="ov2-confirm-body">This action cannot be undone.</div>
+    <div class="ov2-confirm-actions">
+      <button class="ov2-btn ov2-btn-ghost" onclick="_ovCancelDelete()">Cancel</button>
+      <button class="ov2-btn ov2-btn-danger" id="ov2-confirm-delete-btn" onclick="_ovDoDelete()">
+        <i class="fas fa-trash-can"></i> Delete
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ IMPORT CSV ════════════════════════════════════════════════════════════ -->
+<div class="ov2-import-overlay" id="ov2-import-overlay">
+  <div class="ov2-import-box">
+    <div class="ov2-import-header">
+      <span class="ov2-import-title"><i class="fas fa-upload" style="margin-right:7px"></i>Import Overrides from CSV</span>
+      <button class="ov2-drawer-close" onclick="_ovCloseImport()">&times;</button>
+    </div>
+    <div class="ov2-import-body">
+      <div class="ov2-import-format">
+        <strong>Expected columns:</strong> Date, Publisher ID, Offer ID, Revenue Override, Cost Override, Reason, Notes
+        <br><span style="font-size:12px">First row = header. Revenue / Cost columns may be empty to skip that override.</span>
+      </div>
+      <label class="ov2-file-drop" id="ov2-file-drop" for="ov2-file-input">
+        <i class="fas fa-cloud-arrow-up" style="font-size:28px;color:var(--txt-muted)"></i>
+        <span>Drop a CSV file here or <strong>click to browse</strong></span>
+        <input type="file" id="ov2-file-input" accept=".csv" style="display:none" onchange="_ovHandleFileSelect(event)">
+      </label>
+      <div id="ov2-import-preview" style="display:none" class="ov2-import-preview">
+        <div class="ov2-import-preview-header">
+          <span id="ov2-import-count" style="font-weight:600"></span>
+          <span id="ov2-import-errors" class="ov2-import-errors"></span>
+        </div>
+        <div class="ov2-import-table-wrap" id="ov2-import-table-wrap"></div>
+      </div>
+      <div class="ov2-form-error" id="ov2-import-error" style="display:none">
+        <i class="fas fa-circle-exclamation"></i>
+        <span id="ov2-import-error-text"></span>
+      </div>
+    </div>
+    <div class="ov2-drawer-footer" style="border-radius:0 0 14px 14px">
+      <button class="ov2-btn ov2-btn-ghost" onclick="_ovCloseImport()">Cancel</button>
+      <button class="ov2-btn ov2-btn-primary" id="ov2-import-btn" onclick="_ovDoImport()" disabled>
+        <i class="fas fa-upload"></i> Import
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

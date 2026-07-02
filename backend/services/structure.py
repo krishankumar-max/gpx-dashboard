@@ -9,10 +9,14 @@ Responsibilities
 - CSV import / export (lossless round-trip matching the existing funnel format)
 - Publisher stats aggregation for the left panel
 
-CSV format (matches the existing expected_funnel CSV used throughout the product):
+CSV format (simplified, user-friendly):
+    Description,Goal,Payout
+    Install,install,0.00
+    Reach Level 5,reached_level_5,0.10
+
+Old full format (still accepted for backward compatibility):
     goal,expected_percent,time_minutes,payout
     install,100,0,5.00
-    reached_level_5,80,5,10.00
 
 Status machine:
     pending → live     (make_live)
@@ -37,26 +41,44 @@ from backend.utils import ist_now
 # ── CSV header normalisation ───────────────────────────────────────────────────
 
 _HEADER_ALIASES: dict[str, str] = {
+    # Description / display label (stored per step)
+    "description":     "description",
+    "label":           "description",
+    "name":            "description",
+    "displayname":     "description",
+    # Goal / event name (required)
     "goal":            "goal",
     "goalname":        "goal",
+    "goalevent":       "goal",    # "Goal Event" column header
     "event":           "goal",
     "eventname":       "goal",
+    # Expected completion rate (optional, defaults to 100)
     "expectedpercent": "expected_percent",
     "expected":        "expected_percent",
+    "expected%":       "expected_percent",  # "Expected %" column header
     "pct":             "expected_percent",
     "percent":         "expected_percent",
+    # Time in minutes (optional, defaults to 0)
     "timeminutes":     "time_minutes",
+    "timemin":         "time_minutes",      # "Time (min)" → strips () → "timemin"
+    "time(min)":       "time_minutes",      # direct match with parens
     "time":            "time_minutes",
     "minutes":         "time_minutes",
     "min":             "time_minutes",
+    # Payout amount (required)
     "payout":          "payout",
+    "payout($)":       "payout",            # "Payout ($)" column header
+    "payoutusd":       "payout",
     "bid":             "payout",
     "reward":          "payout",
     "rewardusd":       "payout",
+    "amount":          "payout",
 }
 
 
 def _norm_header(raw: str) -> str:
+    """Normalise a CSV header to a canonical key for alias lookup."""
+    # Strip whitespace, lowercase, collapse spaces/underscores/hyphens
     s = raw.strip().lower().replace(" ", "").replace("_", "").replace("-", "")
     return _HEADER_ALIASES.get(s, s)
 
@@ -65,8 +87,33 @@ def _parse_reward_csv(text: str) -> list[dict]:
     """
     Parse a reward-structure CSV and return a list of RewardStep dicts.
 
+    Canonical format (all 5 columns, exact round-trip):
+        Description,Goal Event,Expected %,Time (min),Payout ($)
+        Install,install,100,0,0.00
+        Reach Level 5,reached_level_5,98.33,4,0.10
+
+    Legacy format (backward-compatible):
+        Description,Goal,Payout
+        Install,install,0.00
+
+    Oldest legacy (backward-compatible):
+        goal,expected_percent,time_minutes,payout
+        install,100,0,5.00
+
     Required columns (order-independent, aliases accepted):
-        goal, expected_percent, time_minutes, payout
+        Goal Event  (or Goal / event / goal_name)
+        Payout ($)  (or Payout / bid / reward / amount)
+
+    Optional columns (default if absent):
+        Description     → auto-generated from Goal Event if missing
+        Expected %      → defaults to 100
+        Time (min)      → defaults to 0
+
+    Per-row validation:
+        Goal Event      — required, non-empty
+        Expected %      — must be 0–100
+        Time (min)      — must be >= 0
+        Payout ($)      — must be >= 0
 
     Raises ValueError on fatal parse errors.
     """
@@ -75,36 +122,83 @@ def _parse_reward_csv(text: str) -> list[dict]:
         raise ValueError("CSV is empty")
 
     header = [_norm_header(h) for h in lines[0].split(",")]
-    required = {"goal", "expected_percent", "time_minutes", "payout"}
-    missing = required - set(header)
+
+    required = {"goal", "payout"}
+    missing  = required - set(header)
     if missing:
+        readable = {"goal": "Goal Event", "payout": "Payout ($)"}
         raise ValueError(
-            f"Missing required column(s): {', '.join(sorted(missing))}. "
-            f"Required: goal, expected_percent, time_minutes, payout"
+            f"Missing required column(s): {', '.join(readable.get(c, c) for c in sorted(missing))}. "
+            f"Required: Goal Event, Payout ($)"
         )
 
     goal_i = header.index("goal")
-    pct_i  = header.index("expected_percent")
-    time_i = header.index("time_minutes")
     pay_i  = header.index("payout")
+    pct_i  = header.index("expected_percent") if "expected_percent" in header else None
+    time_i = header.index("time_minutes")     if "time_minutes"     in header else None
+    desc_i = header.index("description")      if "description"      in header else None
 
     steps: list[dict] = []
+    row_errors: list[str] = []
+
     for line_no, line in enumerate(lines[1:], start=2):
         if not line.strip():
             continue
         cols = line.split(",")
+
+        goal = cols[goal_i].strip() if goal_i < len(cols) else ""
+        if not goal:
+            row_errors.append(f"Row {line_no}: Goal Event is required")
+            continue
+
+        raw_pct  = cols[pct_i].strip()  if pct_i  is not None and pct_i  < len(cols) else ""
+        raw_time = cols[time_i].strip() if time_i is not None and time_i < len(cols) else ""
+        raw_pay  = cols[pay_i].strip()  if pay_i  < len(cols) else "0"
+        raw_desc = cols[desc_i].strip() if desc_i is not None and desc_i < len(cols) else ""
+
+        # Parse + validate Expected %
         try:
-            goal = cols[goal_i].strip() if goal_i < len(cols) else ""
-            if not goal:
-                raise ValueError("goal cannot be empty")
-            steps.append({
-                "goal":             goal,
-                "expected_percent": float(cols[pct_i].strip()  if pct_i  < len(cols) else 0),
-                "time_minutes":     float(cols[time_i].strip() if time_i < len(cols) else 0),
-                "payout":           float(cols[pay_i].strip()  if pay_i  < len(cols) else 0),
-            })
-        except (IndexError, ValueError) as exc:
-            raise ValueError(f"Row {line_no}: {exc}") from exc
+            pct = float(raw_pct) if raw_pct else 100.0
+        except ValueError:
+            row_errors.append(f"Row {line_no}: Expected % must be a number (got \"{raw_pct}\")")
+            continue
+        if pct < 0 or pct > 100:
+            row_errors.append(f"Row {line_no}: Expected % must be 0–100 (got {pct})")
+            continue
+
+        # Parse + validate Time (min)
+        try:
+            mins = float(raw_time) if raw_time else 0.0
+        except ValueError:
+            row_errors.append(f"Row {line_no}: Time (min) must be a number (got \"{raw_time}\")")
+            continue
+        if mins < 0:
+            row_errors.append(f"Row {line_no}: Time (min) must be >= 0 (got {mins})")
+            continue
+
+        # Parse + validate Payout ($)
+        try:
+            pay = float(raw_pay) if raw_pay else 0.0
+        except ValueError:
+            row_errors.append(f"Row {line_no}: Payout ($) must be a number (got \"{raw_pay}\")")
+            continue
+        if pay < 0:
+            row_errors.append(f"Row {line_no}: Payout ($) must be >= 0 (got {pay})")
+            continue
+
+        # Auto-generate description from goal event if not provided (backward compat)
+        desc = raw_desc or goal.replace("_", " ").title()
+
+        steps.append({
+            "description":      desc,
+            "goal":             goal,
+            "expected_percent": pct,
+            "time_minutes":     mins,
+            "payout":           pay,
+        })
+
+    if row_errors:
+        raise ValueError("; ".join(row_errors))
 
     if not steps:
         raise ValueError("CSV contains no data rows")
@@ -338,12 +432,15 @@ class StructureService:
 
     def to_csv(self, sid: str) -> str | None:
         """
-        Export a structure's reward_steps as a lossless CSV string.
+        Export a structure's reward_steps as a CSV string.
 
-        Format (canonical — matches the funnel sample CSV):
-            goal,expected_percent,time_minutes,payout
-            install,100,0,5.00
-            ...
+        Canonical format (all 5 columns, exact round-trip):
+            Description,Goal Event,Expected %,Time (min),Payout ($)
+            Install,install,100,0,0.00
+            Reach Level 5,reached_level_5,98.33,4,0.10
+
+        Decimal precision is preserved as stored.
+        Description falls back to a title-cased form of Goal Event if blank.
 
         Returns None if the structure is not found.
         """
@@ -353,14 +450,18 @@ class StructureService:
 
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
-        writer.writerow(["goal", "expected_percent", "time_minutes", "payout"])
+        writer.writerow(["Description", "Goal Event", "Expected %", "Time (min)", "Payout ($)"])
         for step in record.get("reward_steps", []):
-            writer.writerow([
-                step.get("goal", ""),
-                step.get("expected_percent", 0),
-                step.get("time_minutes", 0),
-                step.get("payout", 0),
-            ])
+            goal   = step.get("goal", "")
+            desc   = step.get("description", "") or goal.replace("_", " ").title()
+            pct    = float(step.get("expected_percent", 100))
+            mins   = float(step.get("time_minutes", 0))
+            payout = float(step.get("payout", 0))
+            # Preserve decimal precision: strip trailing zeros but keep at least 2dp for payout
+            pct_s    = f"{pct:g}"
+            mins_s   = f"{mins:g}"
+            payout_s = f"{payout:.10g}"  # up to 10 sig figs, no trailing zeros
+            writer.writerow([desc, goal, pct_s, mins_s, payout_s])
         return output.getvalue()
 
     def from_csv(

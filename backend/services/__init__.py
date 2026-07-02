@@ -11,7 +11,8 @@ Usage in app.py:
         funnel_svc,
         analytics_svc,
         sync_svc,
-    ) = build_services(cache, game_config_repo, publisher_repo, partner_repo, storage)
+    ) = build_services(cache, game_config_repo, publisher_repo, partner_repo,
+                       storage, override_repo=override_repo)
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ from backend.repositories.cache import CacheProvider
 from backend.services.analytics   import AnalyticsService
 from backend.services.funnel       import FunnelService
 from backend.services.game_config  import GameConfigService
+from backend.services.override     import OverrideService
 from backend.services.partner      import PartnerService
 from backend.services.publisher    import PublisherService
 from backend.services.sync         import SyncService
@@ -30,6 +32,7 @@ def build_services(
     publisher_repo,
     partner_repo,
     storage=None,
+    override_repo=None,
     sync_day_workers: int = 2,
     sync_shared_state=None,
     sync_shared_lock=None,
@@ -39,7 +42,8 @@ def build_services(
 
     Returns
     -------
-    (game_config_svc, publisher_svc, partner_svc, funnel_svc, analytics_svc, sync_svc)
+    (game_config_svc, publisher_svc, partner_svc, funnel_svc,
+     analytics_svc, sync_svc, override_svc)
     """
     game_config_svc = GameConfigService(repo=game_config_repo, cache=cache, storage=storage)
     publisher_svc   = PublisherService(repo=publisher_repo)
@@ -47,11 +51,14 @@ def build_services(
 
     funnel_svc      = FunnelService(cache=cache, storage=storage)
 
+    override_svc = OverrideService(repo=override_repo, cache=cache) if override_repo else None
+
     analytics_svc   = AnalyticsService(
         cache=cache,
         game_config_svc=game_config_svc,
         publisher_svc=publisher_svc,
         funnel_svc=funnel_svc,
+        override_svc=override_svc,
     )
 
     sync_svc        = SyncService(
@@ -69,6 +76,7 @@ def build_services(
         funnel_svc,
         analytics_svc,
         sync_svc,
+        override_svc,
     )
 
 
@@ -77,6 +85,7 @@ __all__ = [
     "AnalyticsService",
     "FunnelService",
     "GameConfigService",
+    "OverrideService",
     "PartnerService",
     "PublisherService",
     "SyncService",

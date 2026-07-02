@@ -65,6 +65,7 @@ _game_config_repo = RepositoryFactory.create_game_config_repo(REPO_BACKEND)
 _publisher_repo   = RepositoryFactory.create_publisher_repo(REPO_BACKEND)
 _partner_repo     = RepositoryFactory.create_partner_repo(REPO_BACKEND)
 _structure_repo   = RepositoryFactory.create_structure_repo(REPO_BACKEND)
+_override_repo    = RepositoryFactory.create_override_repo(REPO_BACKEND)
 
 
 # ── Wire storage provider (Strategy pattern — swap local ↔ S3 via env var) ─────
@@ -529,12 +530,14 @@ _storage_provider = _get_storage_provider()
     _funnel_svc,
     _analytics_svc,
     _sync_svc,
+    _override_svc,
 ) = build_services(
     cache=_cache,
     game_config_repo=_game_config_repo,
     publisher_repo=_publisher_repo,
     partner_repo=_partner_repo,
     storage=_storage_provider,
+    override_repo=_override_repo,
     sync_day_workers=SYNC_DAY_WORKERS,
     sync_shared_state=_sync_state,
     sync_shared_lock=_sync_lock,
@@ -556,6 +559,7 @@ app.sync_svc         = _sync_svc         # type: ignore[attr-defined]
 app.sync_engine      = _do_sync          # type: ignore[attr-defined]
 app.cache            = _cache            # type: ignore[attr-defined]
 app.structure_svc    = _structure_svc    # type: ignore[attr-defined]
+app.override_svc     = _override_svc     # type: ignore[attr-defined]
 
 
 # ── Register blueprints ────────────────────────────────────────────────────────

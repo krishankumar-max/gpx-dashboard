@@ -188,3 +188,40 @@ class PublisherStructureORM(Base):
             f"<PublisherStructure publisher={self.publisher_id!r} "
             f"offer={self.offer_id!r} v{self.version} {self.status!r}>"
         )
+
+
+class ManualOverrideORM(Base):
+    """
+    Admin-entered revenue / cost overrides for a specific (date, publisher, offer).
+
+    At most one row per (date, publisher_id, offer_id) — enforced by unique
+    constraint.  An upsert must UPDATE the existing row, not INSERT a duplicate.
+    """
+    __tablename__ = "manual_overrides"
+
+    id               = Column(String(36),  primary_key=True, default=lambda: str(uuid.uuid4()))
+    date             = Column(String(10),  nullable=False)   # YYYY-MM-DD
+    publisher_id     = Column(String(50),  nullable=False)
+    publisher_name   = Column(String(255), nullable=False, default="")
+    offer_id         = Column(String(50),  nullable=False)
+    offer_name       = Column(String(255), nullable=False, default="")
+    revenue_override = Column(Float,       nullable=True)    # None = no override
+    cost_override    = Column(Float,       nullable=True)    # None = no override
+    reason           = Column(Text,        nullable=True)
+    notes            = Column(Text,        nullable=True)
+    created_at       = Column(String(50),  nullable=False)
+    updated_at       = Column(String(50),  nullable=False)
+    created_by       = Column(String(255), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("date", "publisher_id", "offer_id", name="uq_mo_date_pub_offer"),
+        Index("ix_mo_date", "date"),
+        Index("ix_mo_publisher", "publisher_id"),
+        Index("ix_mo_offer", "offer_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ManualOverride date={self.date!r} pub={self.publisher_id!r} "
+            f"offer={self.offer_id!r}>"
+        )
